@@ -28,7 +28,7 @@ from cloth_vision_api.adapters.outbound.database import (
     upgrade_database,
     verify_database_schema,
 )
-from cloth_vision_api.adapters.outbound.database.repository import create_database_engine
+from cloth_vision_api.adapters.outbound.database.session import create_database_engine
 
 EXPECTED_TABLES = {
     "analysis_jobs",
