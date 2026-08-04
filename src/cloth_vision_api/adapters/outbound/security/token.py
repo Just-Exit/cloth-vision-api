@@ -1,24 +1,10 @@
-from __future__ import annotations
-
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import jwt
 from jwt.exceptions import InvalidTokenError
-from pwdlib import PasswordHash
 
 from cloth_vision_api.application.errors import UnauthorizedError
-
-
-class Argon2PasswordManager:
-    def __init__(self) -> None:
-        self._password_hash = PasswordHash.recommended()
-
-    def hash(self, password: str) -> str:
-        return self._password_hash.hash(password)
-
-    def verify(self, password: str, password_hash: str) -> bool:
-        return self._password_hash.verify(password, password_hash)
 
 
 class JwtTokenManager:

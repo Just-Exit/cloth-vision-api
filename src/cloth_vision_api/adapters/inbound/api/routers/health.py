@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from cloth_vision_api.adapters.inbound.api.dependencies import SettingsDependency
-from cloth_vision_api.adapters.inbound.api.schemas import HealthResponse
+from cloth_vision_api.adapters.inbound.api.schemas.system import HealthResponse
 
 router = APIRouter(tags=["system"])
 
