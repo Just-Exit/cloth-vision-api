@@ -3,7 +3,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query
 
-from cloth_vision_api.adapters.inbound.api.dependencies import CurrentUser, ServiceDependency
+from cloth_vision_api.adapters.inbound.api.dependencies import (
+    ClosetServiceDependency,
+    CurrentUser,
+)
 from cloth_vision_api.adapters.inbound.api.schemas import RecommendationResponse
 
 router = APIRouter(prefix="/items", tags=["recommendations"])
@@ -15,7 +18,7 @@ router = APIRouter(prefix="/items", tags=["recommendations"])
 )
 def recommendations(
     item_id: UUID,
-    use_case: ServiceDependency,
+    closet_service: ClosetServiceDependency,
     current_user: CurrentUser,
     limit: Annotated[int, Query(ge=1, le=20)] = 5,
 ) -> list[RecommendationResponse]:
@@ -31,5 +34,5 @@ def recommendations(
             },
             reasons=item.reasons,
         )
-        for item in use_case.recommendations(item_id, current_user.id, limit)
+        for item in closet_service.recommendations(item_id, current_user.id, limit)
     ]

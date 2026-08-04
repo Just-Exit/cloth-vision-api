@@ -40,7 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = config
-    app.state.service = ClosetService(
+    app.state.closet_service = ClosetService(
         repository,
         LocalImageStorage(config.upload_dir),
         AnalysisPipeline(PillowImageProcessor()),
