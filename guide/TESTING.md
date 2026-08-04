@@ -29,7 +29,7 @@
 
 ## 3. 현재 테스트 상태
 
-현재 `tests/test_api.py`는 다음을 검증한다.
+현재 `tests/test_api.py`와 `tests/test_database_schema.py`는 다음을 검증한다.
 
 - health
 - 이메일 signup/login과 인증 누락
@@ -37,10 +37,15 @@
 - item 이미지 업로드와 대표색
 - item 목록과 일부 수정
 - 잘못된 MIME 거부
+- 17개 ORM table과 핵심 constraint/FK contract
+- Alembic head와 ORM metadata schema diff
+- 기존 baseline 데이터 보존
+- SQLite migration upgrade/downgrade
+- CI PostgreSQL migration 왕복과 schema diff
 
 누락된 주요 영역:
 
-- PostgreSQL repository
+- PostgreSQL repository CRUD/transaction contract
 - 다른 사용자 리소스 접근
 - item detail/delete/recommendation의 전체 경계값
 - profile/onboarding

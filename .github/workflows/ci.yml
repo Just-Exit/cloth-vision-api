@@ -8,6 +8,22 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      TEST_POSTGRES_URL: postgresql+psycopg://cloth_vision:cloth_vision@localhost:5432/cloth_vision_test
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: cloth_vision_test
+          POSTGRES_USER: cloth_vision
+          POSTGRES_PASSWORD: cloth_vision
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cloth_vision -d cloth_vision_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
         with:

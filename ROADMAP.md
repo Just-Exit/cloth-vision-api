@@ -57,19 +57,19 @@
 
 ### 1단계. 기반 정리 — P0/중
 
-- [ ] Alembic 도입과 현재 DB baseline migration
+- [x] Alembic 도입과 현재 DB baseline/목표 schema migration
 - [ ] API enum, 오류 형식, 시간대와 삭제 정책 확정
 - [ ] 업로드 이미지의 인증 조회 또는 signed URL 계약 정의
 
 ### 2단계. 사용자 프로필 — P0/중
 
-- [ ] `user_profiles`, `user_preferences` 추가
+- [x] `user_profiles`, `user_preferences` ORM/migration 추가
 - [ ] 체형·키·성별 정체성·퍼스널 컬러 온보딩 저장/수정
 - [ ] 회원가입 시 default closet 생성 정책 확정
 
 ### 3단계. 의류 등록과 디지털 옷장 — P0/상
 
-- [ ] `item_images`, `analysis_jobs`, `item_analyses` 추가
+- [x] `item_images`, `analysis_jobs`, `item_analyses` ORM/migration 추가
 - [ ] 비동기 분석 상태와 실패/재시도 구현
 - [ ] production Vision/segmentation 연결
 - [ ] 분석 결과 사용자 보정 및 AI 원본 분리
@@ -77,10 +77,10 @@
 
 ### 4단계. 코디 추천과 착용 리뷰 — P0/상
 
-- [ ] `outfits`, `outfit_items` 추가
+- [x] `outfits`, `outfit_items` ORM/migration 추가
 - [ ] 날씨·일정·취향 기반 다중 아이템 추천
 - [ ] bookmark와 like/dislike 저장
-- [ ] `wear_events`, `outfit_reviews` 추가
+- [x] `wear_events`, `outfit_reviews` ORM/migration 추가
 
 ### 5단계. 출시 화면 완성 — P0/상
 

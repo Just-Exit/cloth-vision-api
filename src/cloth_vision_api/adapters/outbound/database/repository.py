@@ -5,20 +5,13 @@ from contextlib import contextmanager
 from uuid import UUID
 
 from cloth_vision_core import Category
-from sqlalchemy import (
-    JSON,
-    DateTime,
-    Float,
-    ForeignKey,
-    String,
-    UniqueConstraint,
-    create_engine,
-    delete,
-    select,
-)
+from sqlalchemy import create_engine, delete, event, select
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
+from cloth_vision_api.adapters.outbound.database.identity import AuthIdentityRow, UserRow
+from cloth_vision_api.adapters.outbound.database.wardrobe import ClosetRow, FashionItemRow
 from cloth_vision_api.domain.models import (
     AuthIdentity,
     AuthProvider,
@@ -29,56 +22,22 @@ from cloth_vision_api.domain.models import (
 )
 
 
-class Base(DeclarativeBase):
-    pass
+def _enable_sqlite_foreign_keys(engine: Engine) -> None:
+    if engine.dialect.name != "sqlite":
+        return
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, _) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
-class UserRow(Base):
-    __tablename__ = "users"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
-    nickname: Mapped[str] = mapped_column(String(80))
-    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True))
-
-
-class ClosetRow(Base):
-    __tablename__ = "closets"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
-    name: Mapped[str] = mapped_column(String(80))
-    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True))
-
-
-class AuthIdentityRow(Base):
-    __tablename__ = "auth_identities"
-    __table_args__ = (
-        UniqueConstraint("provider", "subject", name="uq_auth_identity_provider_subject"),
-    )
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
-    provider: Mapped[str] = mapped_column(String(30), index=True)
-    subject: Mapped[str] = mapped_column(String(320))
-    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True))
-
-
-class FashionItemRow(Base):
-    __tablename__ = "items"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    closet_id: Mapped[str] = mapped_column(ForeignKey("closets.id"), index=True)
-    display_name: Mapped[str] = mapped_column(String(120))
-    category: Mapped[str] = mapped_column(String(30))
-    subcategory: Mapped[str | None] = mapped_column(String(60), nullable=True)
-    status: Mapped[str] = mapped_column(String(30))
-    image_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
-    color_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    style_tags: Mapped[list] = mapped_column(JSON, default=list)
-    season_tags: Mapped[list] = mapped_column(JSON, default=list)
-    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
-    user_attributes: Mapped[dict] = mapped_column(JSON, default=dict)
-    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True))
-    updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True))
+def create_database_engine(database_url: str) -> Engine:
+    connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
+    engine = create_engine(database_url, connect_args=connect_args)
+    _enable_sqlite_foreign_keys(engine)
+    return engine
 
 
 def _user(row: UserRow) -> User:
@@ -111,7 +70,7 @@ def _item(row: FashionItemRow) -> FashionItem:
         display_name=row.display_name,
         category=Category(row.category),
         subcategory=row.subcategory,
-        status=ItemStatus(row.status),
+        status=ItemStatus(row.analysis_status),
         image_key=row.image_key,
         color_hex=row.color_hex,
         color_name=row.color_name,
@@ -127,12 +86,8 @@ def _item(row: FashionItemRow) -> FashionItem:
 
 class SqlAlchemyRepository:
     def __init__(self, database_url: str) -> None:
-        connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
-        self.engine = create_engine(database_url, connect_args=connect_args)
+        self.engine = create_database_engine(database_url)
         self.session_factory = sessionmaker(self.engine, expire_on_commit=False)
-
-    def create_schema(self) -> None:
-        Base.metadata.create_all(self.engine)
 
     @contextmanager
     def _session(self) -> Iterator[Session]:
@@ -152,6 +107,7 @@ class SqlAlchemyRepository:
                     email=user.email,
                     nickname=user.nickname,
                     created_at=user.created_at,
+                    updated_at=user.created_at,
                 )
             )
             try:
@@ -206,6 +162,7 @@ class SqlAlchemyRepository:
                     user_id=str(closet.user_id),
                     name=closet.name,
                     created_at=closet.created_at,
+                    updated_at=closet.created_at,
                 )
             )
         return closet
@@ -267,7 +224,7 @@ class SqlAlchemyRepository:
             "display_name": item.display_name,
             "category": item.category.value,
             "subcategory": item.subcategory,
-            "status": item.status.value,
+            "analysis_status": item.status.value,
             "image_key": item.image_key,
             "color_hex": item.color_hex,
             "color_name": item.color_name,

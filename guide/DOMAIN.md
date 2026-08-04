@@ -114,14 +114,21 @@ LLM이 authoritative score를 생성하지 않는다.
 
 ## 4. 상태 모델
 
-### FashionItem lifecycle
+### FashionItem analysis status
 
 ```mermaid
 stateDiagram-v2
     [*] --> processing
-    processing --> active: analysis confirmed
-    processing --> analysis_failed: final failure
-    analysis_failed --> processing: retry
+    processing --> ready: analysis confirmed
+    processing --> failed: final failure
+    failed --> processing: retry
+```
+
+### FashionItem lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> active
     active --> archived
     active --> donated
     active --> sold
@@ -129,8 +136,7 @@ stateDiagram-v2
     archived --> active
 ```
 
-분석 실행 상태와 의류 lifecycle을 하나의 `status`로 섞지 않는다. 현재 `processing/ready/failed`
-필드는 migration 과정에서 `analysis_status`와 `lifecycle_status`로 분리한다.
+분석 실행 상태와 의류 lifecycle은 `analysis_status`와 `lifecycle_status`로 분리한다.
 
 ### AnalysisJob
 
