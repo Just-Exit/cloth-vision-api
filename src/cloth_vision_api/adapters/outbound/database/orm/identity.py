@@ -6,15 +6,15 @@ from typing import TYPE_CHECKING
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from cloth_vision_api.adapters.outbound.database.base import JSON_VALUE, Base, utc_now
+from cloth_vision_api.adapters.outbound.database.orm.base import JSON_VALUE, Base, utc_now
 
 if TYPE_CHECKING:
-    from cloth_vision_api.adapters.outbound.database.styling import (
+    from cloth_vision_api.adapters.outbound.database.orm.styling import (
         OutfitRow,
         SubscriptionRow,
         WearEventRow,
     )
-    from cloth_vision_api.adapters.outbound.database.wardrobe import ClosetRow, ImportJobRow
+    from cloth_vision_api.adapters.outbound.database.orm.wardrobe import ClosetRow, ImportJobRow
 
 
 class UserRow(Base):

@@ -17,11 +17,11 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from cloth_vision_api.adapters.outbound.database.base import JSON_VALUE, Base, utc_now
+from cloth_vision_api.adapters.outbound.database.orm.base import JSON_VALUE, Base, utc_now
 
 if TYPE_CHECKING:
-    from cloth_vision_api.adapters.outbound.database.identity import UserRow
-    from cloth_vision_api.adapters.outbound.database.wardrobe import FashionItemRow
+    from cloth_vision_api.adapters.outbound.database.orm.identity import UserRow
+    from cloth_vision_api.adapters.outbound.database.orm.wardrobe import FashionItemRow
 
 
 class OutfitRow(Base):
