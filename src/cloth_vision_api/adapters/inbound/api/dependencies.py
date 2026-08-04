@@ -3,8 +3,8 @@ from typing import Annotated
 from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 
-from cloth_vision_api.application.auth import AuthService
-from cloth_vision_api.application.use_cases import ClosetService
+from cloth_vision_api.application.identity import AuthService
+from cloth_vision_api.application.wardrobe import ClosetService
 from cloth_vision_api.config import Settings
 from cloth_vision_api.domain.models import User
 

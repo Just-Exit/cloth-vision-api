@@ -9,7 +9,7 @@ from cloth_vision_api.adapters.inbound.api.dependencies import (
     CurrentUser,
     SettingsDependency,
 )
-from cloth_vision_api.adapters.inbound.api.schemas import ItemResponse, ItemUpdate
+from cloth_vision_api.adapters.inbound.api.schemas.wardrobe import ItemResponse, ItemUpdate
 from cloth_vision_api.application.errors import InvalidImageError
 
 router = APIRouter(tags=["items"])

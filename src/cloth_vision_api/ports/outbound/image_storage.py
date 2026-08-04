@@ -1,0 +1,9 @@
+from pathlib import Path
+from typing import BinaryIO, Protocol
+from uuid import UUID
+
+
+class ImageStorage(Protocol):
+    def save(self, item_id: UUID, filename: str, stream: BinaryIO) -> str: ...
+    def path_for(self, key: str) -> Path: ...
+    def delete(self, key: str) -> None: ...

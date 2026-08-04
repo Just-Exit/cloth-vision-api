@@ -8,24 +8,31 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from cloth_vision_api.adapters.inbound.api.router import router
-from cloth_vision_api.adapters.outbound.database import SqlAlchemyRepository, upgrade_database
+from cloth_vision_api.adapters.outbound.database import (
+    SqlAlchemyIdentityRepository,
+    SqlAlchemyWardrobeRepository,
+    create_session_factory,
+    upgrade_database,
+)
 from cloth_vision_api.adapters.outbound.security import Argon2PasswordManager, JwtTokenManager
 from cloth_vision_api.adapters.outbound.storage import LocalImageStorage
-from cloth_vision_api.application.auth import AuthService
 from cloth_vision_api.application.errors import (
     ApplicationError,
     ConflictError,
     NotFoundError,
     UnauthorizedError,
 )
-from cloth_vision_api.application.use_cases import ClosetService
+from cloth_vision_api.application.identity import AuthService
+from cloth_vision_api.application.wardrobe import ClosetService
 from cloth_vision_api.config import Settings
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     config = settings or Settings()
     Path("./var").mkdir(parents=True, exist_ok=True)
-    repository = SqlAlchemyRepository(config.database_url)
+    session_factory = create_session_factory(config.database_url)
+    identity_repository = SqlAlchemyIdentityRepository(session_factory)
+    wardrobe_repository = SqlAlchemyWardrobeRepository(session_factory)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -41,13 +48,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = config
     app.state.closet_service = ClosetService(
-        repository,
+        identity_repository,
+        wardrobe_repository,
         LocalImageStorage(config.upload_dir),
         AnalysisPipeline(PillowImageProcessor()),
         MatchingEngine(),
     )
     app.state.auth_service = AuthService(
-        repository,
+        identity_repository,
         Argon2PasswordManager(),
         JwtTokenManager(
             config.jwt_secret_key,

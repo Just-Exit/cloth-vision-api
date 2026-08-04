@@ -7,7 +7,7 @@ from cloth_vision_api.adapters.inbound.api.dependencies import (
     AuthDependency,
     CurrentUser,
 )
-from cloth_vision_api.adapters.inbound.api.schemas import (
+from cloth_vision_api.adapters.inbound.api.schemas.auth import (
     AuthResponse,
     LoginRequest,
     SignupRequest,

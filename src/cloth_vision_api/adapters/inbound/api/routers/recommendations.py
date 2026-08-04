@@ -7,7 +7,7 @@ from cloth_vision_api.adapters.inbound.api.dependencies import (
     ClosetServiceDependency,
     CurrentUser,
 )
-from cloth_vision_api.adapters.inbound.api.schemas import RecommendationResponse
+from cloth_vision_api.adapters.inbound.api.schemas.styling import RecommendationResponse
 
 router = APIRouter(prefix="/items", tags=["recommendations"])
 
