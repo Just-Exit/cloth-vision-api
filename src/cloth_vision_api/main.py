@@ -36,7 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title=config.app_name,
         version="0.1.0",
-        description="AI Fashion Coach MVP backend",
+        description="cloth-vision backend",
         lifespan=lifespan,
     )
     app.state.settings = config
