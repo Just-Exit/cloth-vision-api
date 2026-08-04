@@ -5,6 +5,7 @@ description = "AI Fashion Coach MVP REST API"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "alembic>=1.14,<2",
     "cloth-vision-core",
     "email-validator>=2.2,<3",
     "fastapi>=0.115,<1",

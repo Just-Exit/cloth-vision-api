@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from cloth_vision_api.adapters.inbound.api.router import router
-from cloth_vision_api.adapters.outbound.database import SqlAlchemyRepository
+from cloth_vision_api.adapters.outbound.database import SqlAlchemyRepository, upgrade_database
 from cloth_vision_api.adapters.outbound.security import Argon2PasswordManager, JwtTokenManager
 from cloth_vision_api.adapters.outbound.storage import LocalImageStorage
 from cloth_vision_api.application.auth import AuthService
@@ -29,7 +29,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        repository.create_schema()
+        if config.run_database_migrations:
+            upgrade_database(config.database_url)
         yield
 
     app = FastAPI(

@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help install install-dev install-postgres db-up db-down db-logs db-status run test lint format check
+.PHONY: help install install-dev install-postgres db-up db-down db-logs db-status db-upgrade db-downgrade db-check run test lint format check
 
 ifneq (,$(filter run,$(firstword $(MAKECMDGOALS))))
 PORT := $(or $(word 2,$(MAKECMDGOALS)),8000)
@@ -31,6 +31,15 @@ db-logs: ## PostgreSQL 로그 확인
 
 db-status: ## PostgreSQL 컨테이너 상태 확인
 	docker compose ps postgres
+
+db-upgrade: ## DB 스키마를 최신 Alembic revision으로 업그레이드
+	uv run alembic upgrade head
+
+db-downgrade: ## DB 스키마를 한 revision 되돌리기
+	uv run alembic downgrade -1
+
+db-check: ## ORM metadata와 DB 스키마 차이 확인
+	uv run alembic check
 
 run: ## 개발 API 서버 실행 (기본 8000, 예: make run 9000)
 	uv run uvicorn cloth_vision_api.main:app --reload --port $(PORT)

@@ -72,4 +72,5 @@ wireframe/
 !ROADMAP.md
 !WIREFRAME_BACKEND_GAP_ANALYSIS.md
 !guide/*.md
+!migrations/README.md
 test_web/

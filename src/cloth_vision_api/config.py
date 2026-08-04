@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     app_name: str = "Cloth Vision API"
     app_env: str = "local"
     database_url: str = "postgresql+psycopg://cloth_vision:cloth_vision@localhost:5432/cloth_vision"
+    run_database_migrations: bool = True
     upload_dir: Path = Path("./var/uploads")
     max_upload_bytes: int = 10 * 1024 * 1024
     allowed_image_types: str = "image/jpeg,image/png,image/webp"
