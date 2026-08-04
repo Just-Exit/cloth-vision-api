@@ -1,33 +1,29 @@
-from cloth_vision_api.adapters.outbound.database.base import Base
-from cloth_vision_api.adapters.outbound.database.identity import (
-    AuthIdentityRow,
-    RefreshTokenRow,
-    UserPreferenceRow,
-    UserProfileRow,
-    UserRow,
-)
 from cloth_vision_api.adapters.outbound.database.migrations import (
     downgrade_database,
     upgrade_database,
     verify_database_schema,
 )
-from cloth_vision_api.adapters.outbound.database.repository import SqlAlchemyRepository
-from cloth_vision_api.adapters.outbound.database.styling import (
-    OutfitFeedbackRow,
-    OutfitItemRow,
-    OutfitReviewRow,
-    OutfitRow,
-    SubscriptionRow,
-    WearEventRow,
-)
-from cloth_vision_api.adapters.outbound.database.wardrobe import (
+from cloth_vision_api.adapters.outbound.database.orm import (
     AnalysisJobRow,
+    AuthIdentityRow,
+    Base,
     ClosetRow,
     FashionItemRow,
     ImportJobRow,
     ItemAnalysisRow,
     ItemImageRow,
+    OutfitFeedbackRow,
+    OutfitItemRow,
+    OutfitReviewRow,
+    OutfitRow,
+    RefreshTokenRow,
+    SubscriptionRow,
+    UserPreferenceRow,
+    UserProfileRow,
+    UserRow,
+    WearEventRow,
 )
+from cloth_vision_api.adapters.outbound.database.repository import SqlAlchemyRepository
 
 __all__ = [
     "AnalysisJobRow",

@@ -10,8 +10,12 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from cloth_vision_api.adapters.outbound.database.identity import AuthIdentityRow, UserRow
-from cloth_vision_api.adapters.outbound.database.wardrobe import ClosetRow, FashionItemRow
+from cloth_vision_api.adapters.outbound.database.orm import (
+    AuthIdentityRow,
+    ClosetRow,
+    FashionItemRow,
+    UserRow,
+)
 from cloth_vision_api.domain.models import (
     AuthIdentity,
     AuthProvider,

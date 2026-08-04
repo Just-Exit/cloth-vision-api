@@ -1,3 +1,5 @@
+"""Shared SQLAlchemy ORM metadata and persistence types."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
