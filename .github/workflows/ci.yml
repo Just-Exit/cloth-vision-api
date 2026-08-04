@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: cloth-vision
+      - uses: actions/checkout@v4
+        with:
+          repository: onedayonecommit/cloth-vision-core
+          token: ${{ secrets.CORE_REPO_TOKEN }}
+          path: cloth-vision-core
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - working-directory: cloth-vision
+        run: uv sync --extra dev --locked
+      - working-directory: cloth-vision
+        run: uv run ruff format --check .
+      - working-directory: cloth-vision
+        run: uv run ruff check .
+      - working-directory: cloth-vision
+        run: uv run pytest
+      - working-directory: cloth-vision
+        run: uv build

@@ -1,0 +1,284 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
+from contextlib import contextmanager
+from uuid import UUID
+
+from cloth_vision_core import Category
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Float,
+    ForeignKey,
+    String,
+    UniqueConstraint,
+    create_engine,
+    delete,
+    select,
+)
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+
+from cloth_vision_api.domain.models import (
+    AuthIdentity,
+    AuthProvider,
+    Closet,
+    FashionItem,
+    ItemStatus,
+    User,
+)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class UserRow(Base):
+    __tablename__ = "users"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    nickname: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True))
+
+
+class ClosetRow(Base):
+    __tablename__ = "closets"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True))
+
+
+class AuthIdentityRow(Base):
+    __tablename__ = "auth_identities"
+    __table_args__ = (
+        UniqueConstraint("provider", "subject", name="uq_auth_identity_provider_subject"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(30), index=True)
+    subject: Mapped[str] = mapped_column(String(320))
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True))
+
+
+class FashionItemRow(Base):
+    __tablename__ = "items"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    closet_id: Mapped[str] = mapped_column(ForeignKey("closets.id"), index=True)
+    display_name: Mapped[str] = mapped_column(String(120))
+    category: Mapped[str] = mapped_column(String(30))
+    subcategory: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    status: Mapped[str] = mapped_column(String(30))
+    image_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    color_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    style_tags: Mapped[list] = mapped_column(JSON, default=list)
+    season_tags: Mapped[list] = mapped_column(JSON, default=list)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    user_attributes: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True))
+
+
+def _user(row: UserRow) -> User:
+    return User(email=row.email, nickname=row.nickname, id=UUID(row.id), created_at=row.created_at)
+
+
+def _closet(row: ClosetRow) -> Closet:
+    return Closet(
+        user_id=UUID(row.user_id),
+        name=row.name,
+        id=UUID(row.id),
+        created_at=row.created_at,
+    )
+
+
+def _auth_identity(row: AuthIdentityRow) -> AuthIdentity:
+    return AuthIdentity(
+        user_id=UUID(row.user_id),
+        provider=AuthProvider(row.provider),
+        subject=row.subject,
+        password_hash=row.password_hash,
+        id=UUID(row.id),
+        created_at=row.created_at,
+    )
+
+
+def _item(row: FashionItemRow) -> FashionItem:
+    return FashionItem(
+        closet_id=UUID(row.closet_id),
+        display_name=row.display_name,
+        category=Category(row.category),
+        subcategory=row.subcategory,
+        status=ItemStatus(row.status),
+        image_key=row.image_key,
+        color_hex=row.color_hex,
+        color_name=row.color_name,
+        style_tags=list(row.style_tags or []),
+        season_tags=list(row.season_tags or []),
+        confidence=row.confidence,
+        user_attributes=dict(row.user_attributes or {}),
+        id=UUID(row.id),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+class SqlAlchemyRepository:
+    def __init__(self, database_url: str) -> None:
+        connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
+        self.engine = create_engine(database_url, connect_args=connect_args)
+        self.session_factory = sessionmaker(self.engine, expire_on_commit=False)
+
+    def create_schema(self) -> None:
+        Base.metadata.create_all(self.engine)
+
+    @contextmanager
+    def _session(self) -> Iterator[Session]:
+        with self.session_factory() as session:
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+
+    def add_user(self, user: User) -> User:
+        with self._session() as session:
+            session.add(
+                UserRow(
+                    id=str(user.id),
+                    email=user.email,
+                    nickname=user.nickname,
+                    created_at=user.created_at,
+                )
+            )
+            try:
+                session.flush()
+            except IntegrityError as exc:
+                raise ValueError("duplicate email") from exc
+        return user
+
+    def get_user(self, user_id: UUID) -> User | None:
+        with self._session() as session:
+            row = session.get(UserRow, str(user_id))
+            return _user(row) if row else None
+
+    def get_user_by_email(self, email: str) -> User | None:
+        with self._session() as session:
+            row = session.scalar(select(UserRow).where(UserRow.email == email))
+            return _user(row) if row else None
+
+    def add_auth_identity(self, identity: AuthIdentity) -> AuthIdentity:
+        with self._session() as session:
+            session.add(
+                AuthIdentityRow(
+                    id=str(identity.id),
+                    user_id=str(identity.user_id),
+                    provider=identity.provider.value,
+                    subject=identity.subject,
+                    password_hash=identity.password_hash,
+                    created_at=identity.created_at,
+                )
+            )
+            try:
+                session.flush()
+            except IntegrityError as exc:
+                raise ValueError("duplicate auth identity") from exc
+        return identity
+
+    def get_auth_identity(self, provider: str, subject: str) -> AuthIdentity | None:
+        with self._session() as session:
+            row = session.scalar(
+                select(AuthIdentityRow).where(
+                    AuthIdentityRow.provider == provider,
+                    AuthIdentityRow.subject == subject,
+                )
+            )
+            return _auth_identity(row) if row else None
+
+    def add_closet(self, closet: Closet) -> Closet:
+        with self._session() as session:
+            session.add(
+                ClosetRow(
+                    id=str(closet.id),
+                    user_id=str(closet.user_id),
+                    name=closet.name,
+                    created_at=closet.created_at,
+                )
+            )
+        return closet
+
+    def get_closet(self, closet_id: UUID) -> Closet | None:
+        with self._session() as session:
+            row = session.get(ClosetRow, str(closet_id))
+            return _closet(row) if row else None
+
+    def list_closets(self, user_id: UUID) -> list[Closet]:
+        with self._session() as session:
+            rows = session.scalars(
+                select(ClosetRow)
+                .where(ClosetRow.user_id == str(user_id))
+                .order_by(ClosetRow.created_at)
+            )
+            return [_closet(row) for row in rows]
+
+    def add_item(self, item: FashionItem) -> FashionItem:
+        with self._session() as session:
+            session.add(self._item_row(item))
+        return item
+
+    def get_item(self, item_id: UUID) -> FashionItem | None:
+        with self._session() as session:
+            row = session.get(FashionItemRow, str(item_id))
+            return _item(row) if row else None
+
+    def list_items(self, closet_id: UUID) -> list[FashionItem]:
+        with self._session() as session:
+            rows = session.scalars(
+                select(FashionItemRow)
+                .where(FashionItemRow.closet_id == str(closet_id))
+                .order_by(FashionItemRow.created_at.desc())
+            )
+            return [_item(row) for row in rows]
+
+    def save_item(self, item: FashionItem) -> FashionItem:
+        with self._session() as session:
+            row = session.get(FashionItemRow, str(item.id))
+            if not row:
+                raise ValueError("item does not exist")
+            values = self._item_values(item)
+            for key, value in values.items():
+                setattr(row, key, value)
+        return item
+
+    def delete_item(self, item_id: UUID) -> bool:
+        with self._session() as session:
+            result = session.execute(
+                delete(FashionItemRow).where(FashionItemRow.id == str(item_id))
+            )
+            return bool(result.rowcount)
+
+    @staticmethod
+    def _item_values(item: FashionItem) -> dict:
+        return {
+            "closet_id": str(item.closet_id),
+            "display_name": item.display_name,
+            "category": item.category.value,
+            "subcategory": item.subcategory,
+            "status": item.status.value,
+            "image_key": item.image_key,
+            "color_hex": item.color_hex,
+            "color_name": item.color_name,
+            "style_tags": item.style_tags,
+            "season_tags": item.season_tags,
+            "confidence": item.confidence,
+            "user_attributes": item.user_attributes,
+            "created_at": item.created_at,
+            "updated_at": item.updated_at,
+        }
+
+    @classmethod
+    def _item_row(cls, item: FashionItem) -> FashionItemRow:
+        return FashionItemRow(id=str(item.id), **cls._item_values(item))
