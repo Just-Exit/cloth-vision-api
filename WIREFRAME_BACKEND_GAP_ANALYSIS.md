@@ -19,6 +19,10 @@
 - 아이템 목록/상세/수정/삭제
 - 한 아이템을 기준으로 다른 아이템과의 1:1 조합 점수 계산
 
+Issue #1에서 와이어프레임 도메인을 담을 17개 SQLAlchemy ORM 테이블과 Alembic
+baseline/head migration은 구현했다. 다만 신규 테이블을 사용하는 API와 유스케이스는 아직
+구현하지 않았으므로, 아래 화면 충족 판정은 API 실행 기능을 기준으로 유지한다.
+
 반면 와이어프레임의 핵심인 다음 기능은 아직 없다.
 
 - Apple/Google/Kakao 소셜 로그인
@@ -55,17 +59,23 @@
 ```mermaid
 erDiagram
     USERS ||--o{ AUTH_IDENTITIES : authenticates_with
-    USERS ||--|| USER_PROFILES : has
-    USERS ||--|| USER_PREFERENCES : configures
+    USERS ||--o{ REFRESH_TOKENS : owns
+    USERS ||--o| USER_PROFILES : has
+    USERS ||--o| USER_PREFERENCES : configures
     USERS ||--o{ CLOSETS : owns
+    USERS ||--o{ IMPORT_JOBS : requests
     USERS ||--o{ OUTFITS : receives
+    USERS ||--o{ OUTFIT_FEEDBACK : reacts
     USERS ||--o{ WEAR_EVENTS : records
     USERS ||--o{ SUBSCRIPTIONS : subscribes
 
     CLOSETS ||--o{ ITEMS : contains
+    CLOSETS ||--o{ IMPORT_JOBS : imports_into
+    IMPORT_JOBS o|--o{ ITEMS : creates
     ITEMS ||--o{ ITEM_IMAGES : has
     ITEMS ||--o{ ANALYSIS_JOBS : requests
     ITEMS ||--o{ ITEM_ANALYSES : analyzed_as
+    ANALYSIS_JOBS ||--o| ITEM_ANALYSES : produces
 
     OUTFITS ||--|{ OUTFIT_ITEMS : consists_of
     ITEMS ||--o{ OUTFIT_ITEMS : included_in
@@ -156,9 +166,10 @@ Base URL은 `/api/v1`이다.
 | DELETE | `/items/{item_id}` | 아이템 및 로컬 원본 이미지 삭제 |
 | GET | `/items/{item_id}/recommendations` | 기준 아이템과 다른 아이템의 1:1 조합 점수 |
 
-### 3.2 현재 실제 DB 다이어그램
+### 3.2 Alembic baseline과 현재 ORM head
 
-코드에 구현된 테이블은 아래 네 개뿐이다. `guide/PROJECT.md`에 있는 `ITEM_IMAGE`, `ANALYSIS_JOB`, `ITEM_ANALYSIS`, `ITEM_RELATION`은 문서 설계일 뿐 현재 SQLAlchemy 모델에는 없다.
+`0001` migration은 Issue #1 이전의 네 테이블을 그대로 캡처한 호환 baseline이다.
+기존 데이터베이스를 이 버전으로 식별한 뒤 `0002`로 안전하게 확장한다.
 
 ```mermaid
 erDiagram
@@ -208,6 +219,10 @@ erDiagram
     }
 ```
 
+현재 Alembic head와 SQLAlchemy metadata에는 위 네 테이블을 확장한 17개 테이블이
+구현되어 있다. 전체 관계와 컬럼·제약·인덱스는 `guide/DATABASE.md`를 기준으로 한다.
+ORM이 준비되었다는 사실은 해당 기능의 API까지 구현되었다는 뜻은 아니다.
+
 ### 3.3 현재 구현에서 특히 주의할 점
 
 1. `AnalysisPipeline`에는 production Vision provider가 주입되지 않는다. 현재 자동 분석은 전체 이미지의 대표색 1개만 추출한다.
@@ -215,8 +230,8 @@ erDiagram
 3. 소재, 패턴, 핏, 복수 팔레트, 배경 제거, segmentation은 구현되지 않았다.
 4. 아이템 응답에는 `image_key`나 클라이언트가 접근할 수 있는 image URL이 없다. 따라서 디지털 옷장 카드에 이미지를 표시할 공식 API 계약이 없다.
 5. 추천 결과는 DB에 저장되지 않으며 기준 아이템과 후보 아이템 한 벌씩의 pairwise 비교다. 화면처럼 상의·하의·아우터·신발을 묶은 코디가 아니다.
-6. 스키마는 애플리케이션 시작 시 `create_all()`로 생성된다. 컬럼 변경과 운영 배포를 안전하게 관리할 migration 체계가 없다.
-7. 현재 테스트는 이메일 인증과 기본 아이템 흐름 중심이며, 와이어프레임 유스케이스를 보장하지 않는다.
+6. 애플리케이션 시작 시 Alembic head까지 upgrade하며 운영에서는 자동 migration을 끌 수 있다. `0001` baseline과 `0002` 확장 migration이 있다.
+7. ORM metadata/Alembic 일치, 기존 데이터 보존, upgrade/downgrade는 SQLite와 PostgreSQL에서 검증한다. 화면별 API 유스케이스 테스트는 아직 없다.
 
 ---
 
@@ -788,8 +803,9 @@ POST  /api/v1/auth/logout
 
 ### Phase 1 — 데이터와 인증 기반(P0)
 
-- Alembic 도입, 현재 4개 테이블 baseline migration 생성
-- `user_profiles`, `user_preferences`, `refresh_tokens` 추가
+- [x] Alembic 도입, 기존 4개 테이블 baseline migration 생성
+- [x] `user_profiles`, `user_preferences`, `refresh_tokens` ORM과 migration 추가
+- [ ] 프로필/온보딩/refresh token API와 유스케이스 연결
 - OAuth provider 3종 중 출시 우선 provider부터 구현
 - refresh rotation, logout/revoke, 인증/인가 테스트
 
@@ -801,7 +817,8 @@ POST  /api/v1/auth/logout
 
 ### Phase 2 — 의류 수집과 분석(P0)
 
-- `item_images`, `analysis_jobs`, `item_analyses` 추가
+- [x] `item_images`, `analysis_jobs`, `item_analyses`, `import_jobs` ORM과 migration 추가
+- [ ] 신규 모델을 repository/API/worker 흐름에 연결
 - object storage 또는 안전한 로컬 개발 storage adapter와 signed/read endpoint 구현
 - worker/queue와 retry/timeout/error 상태 구현
 - Core에 segmentation 및 production Vision provider 연결
@@ -830,7 +847,8 @@ POST  /api/v1/auth/logout
 
 ### Phase 4 — 코디와 피드백(P0)
 
-- `outfits`, `outfit_items`, `outfit_feedback`, `wear_events`, `outfit_reviews` 추가
+- [x] `outfits`, `outfit_items`, `outfit_feedback`, `wear_events`, `outfit_reviews` ORM과 migration 추가
+- [ ] 신규 모델을 repository/API/추천 흐름에 연결
 - 다중 item 후보 생성/제약/점수 알고리즘 구현
 - 날씨와 occasion context 연결
 - bookmark, feedback, wear, review API 구현
@@ -859,6 +877,8 @@ POST  /api/v1/auth/logout
 
 ### Phase 6 — 구독과 고급 import(P2)
 
+- [x] `subscriptions`, `import_jobs` ORM과 migration 추가
+- [ ] 신규 모델을 결제/import 유스케이스에 연결
 - 결제 provider 결정과 webhook 검증
 - subscription projection/entitlement
 - screenshot 다중 아이템 분리
@@ -870,9 +890,10 @@ POST  /api/v1/auth/logout
 
 ### DB migration과 운영 안정성
 
-- `Base.metadata.create_all()`만으로 운영 스키마를 관리하지 말고 Alembic migration을 도입한다.
-- 기존 데이터 backfill, nullable → not null 전환, index 생성 순서를 migration에 포함한다.
-- 개발 SQLite와 운영 PostgreSQL 간 JSON/constraint 동작 차이를 통합 테스트한다.
+- [x] 실행 코드의 `Base.metadata.create_all()`을 Alembic migration으로 교체했다.
+- [x] 기존 데이터 backfill, nullable → not null 전환, index 생성 순서를 `0002`에 포함했다.
+- [x] SQLite/PostgreSQL에서 metadata 일치와 upgrade/downgrade를 교차 검증한다.
+- [ ] 운영 배포에서는 애플리케이션 기동과 migration 실행 권한을 분리한다.
 
 ### AI/Core 작업
 
@@ -969,4 +990,3 @@ POST  /api/v1/auth/logout
 - 현재 애플리케이션 조립: `src/cloth_vision_api/main.py`
 - 현재 Core 분석/추천: `../cloth-vision-core/src/cloth_vision_core/`
 - 기존 미래 설계 참고: `guide/PROJECT.md`
-

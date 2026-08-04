@@ -2,14 +2,16 @@
 
 ## 1. 원칙
 
-- 운영 기준은 PostgreSQL이며 UUID와 timezone-aware timestamp를 사용한다.
+- 운영 기준은 PostgreSQL이며 식별자는 UUID 의미를 가진 `String(36)`, 시간은
+  timezone-aware timestamp를 사용한다. 기존 schema 호환 migration이 끝난 뒤 PostgreSQL
+  native UUID 전환 여부를 별도 결정한다.
 - 사용자 확정 데이터, AI 원본, 실행 job을 분리한다.
 - 실제 착용의 원장은 `wear_events`다.
 - 삭제/기부/판매는 통계와 복구 요구를 고려해 lifecycle로 표현한다.
 - schema 변경은 `create_all()`이 아니라 Alembic migration으로 관리한다.
 - JSONB는 구조가 유동적인 결과에 사용하고, 검색·제약이 중요한 값은 컬럼으로 둔다.
 
-## 2. 현재 실제 스키마
+## 2. Alembic baseline (`0001`)
 
 ```mermaid
 erDiagram
@@ -18,35 +20,38 @@ erDiagram
     CLOSETS ||--o{ ITEMS : contains
 ```
 
-| 테이블 | 현재 역할 | 주요 한계 |
+| 테이블 | baseline 역할 | 주요 한계 |
 |---|---|---|
 | `users` | email/nickname 계정 | profile/onboarding/settings 없음 |
 | `auth_identities` | local identity와 password hash | OAuth/session 없음 |
 | `closets` | 사용자 옷장 | default/archive 정책 없음 |
 | `items` | 이미지 key와 분석/표시 값을 한 행에 저장 | AI 원본/파생 이미지/착용 lifecycle 분리 안 됨 |
 
-`guide/PROJECT.md`의 과거 ERD에 있던 일부 테이블은 실제 코드에 구현되지 않았으므로 현재
-스키마로 간주하지 않는다.
+`0001`은 이전 `Base.metadata.create_all()` 방식의 DB를 안전하게 stamp할 수 있도록 네
+테이블 구조를 그대로 캡처한다.
 
-## 3. 목표 스키마
+## 3. ORM head 스키마 (`0002`)
 
 ```mermaid
 erDiagram
     USERS ||--o{ AUTH_IDENTITIES : authenticates_with
     USERS ||--o{ REFRESH_TOKENS : owns
-    USERS ||--|| USER_PROFILES : has
-    USERS ||--|| USER_PREFERENCES : configures
+    USERS ||--o| USER_PROFILES : has
+    USERS ||--o| USER_PREFERENCES : configures
     USERS ||--o{ CLOSETS : owns
     USERS ||--o{ IMPORT_JOBS : requests
     USERS ||--o{ OUTFITS : receives
+    USERS ||--o{ OUTFIT_FEEDBACK : reacts
     USERS ||--o{ WEAR_EVENTS : records
     USERS ||--o{ SUBSCRIPTIONS : subscribes
 
     CLOSETS ||--o{ ITEMS : contains
+    CLOSETS ||--o{ IMPORT_JOBS : imports_into
+    IMPORT_JOBS o|--o{ ITEMS : creates
     ITEMS ||--o{ ITEM_IMAGES : has
     ITEMS ||--o{ ANALYSIS_JOBS : requests
+    ITEMS ||--o{ ITEM_ANALYSES : has_history
     ANALYSIS_JOBS ||--o| ITEM_ANALYSES : produces
-    IMPORT_JOBS ||--o{ ITEMS : creates
 
     OUTFITS ||--|{ OUTFIT_ITEMS : consists_of
     ITEMS ||--o{ OUTFIT_ITEMS : included_in
@@ -54,6 +59,9 @@ erDiagram
     OUTFITS ||--o{ WEAR_EVENTS : worn_as
     WEAR_EVENTS ||--o| OUTFIT_REVIEWS : reviewed_by
 ```
+
+SQLAlchemy `Base.metadata`와 Alembic head는 위 17개 테이블을 구현하며 `alembic check`로
+SQLite와 PostgreSQL 모두 schema diff가 없음을 검증한다.
 
 ## 4. 테이블 정의
 
@@ -101,9 +109,8 @@ erDiagram
 
 #### `closets`
 
-- 현재 컬럼 유지
-- `is_default`, `archived_at`, `updated_at` 추가 고려
-- 사용자별 default closet 하나를 보장한다.
+- baseline 컬럼과 `is_default`, `archived_at`, `updated_at`
+- partial unique index로 사용자별 default closet 하나를 보장한다.
 
 #### `items`
 
@@ -117,6 +124,11 @@ erDiagram
 
 `materials`와 `colors`를 JSONB로 시작할 수 있지만 검색 요구가 커지면 child table로
 정규화한다.
+
+- `analysis_status`: processing/ready/failed
+- `lifecycle_status`: active/archived/donated/sold/discarded
+- 기존 `status` 값은 `analysis_status` rename으로 보존한다.
+- 기존 `image_key`는 `item_images` 전환이 끝날 때까지 compatibility bridge로 유지한다.
 
 #### `item_images`
 
@@ -205,15 +217,20 @@ erDiagram
 - Outfit/Wear: 과거 analytics 보존 필요 시 item 표시 snapshot 또는 tombstone 사용
 - Analysis raw result: 보존 기간을 두고 주기적으로 삭제 가능
 
-## 7. Migration 순서
+## 7. Migration revision
 
-1. Alembic baseline으로 현재 4개 테이블을 캡처한다.
-2. profile/preferences/refresh session을 추가한다.
-3. item image/job/analysis 테이블을 추가하고 기존 `items.image_key`를 backfill한다.
-4. item의 분석 상태와 lifecycle 상태를 분리한다.
-5. outfit/wear/review를 추가한다.
-6. analytics용 index와 필요한 cache 컬럼을 추가한다.
-7. subscription/import는 해당 기능 착수 시 추가한다.
+1. `0001_baseline`: 기존 users/auth_identities/closets/items 캡처
+2. `0002_expand_wireframe_domain_schema`:
+   - profile/preferences/refresh session
+   - item image/job/analysis/import
+   - item analysis/lifecycle 상태 분리와 기존 데이터 default backfill
+   - outfit/feedback/wear/review/subscription
+   - owner/검색/집계 index와 check constraint
+   - PostgreSQL 기존 JSON 컬럼을 JSONB로 변환
+
+애플리케이션 시작 시 `RUN_DATABASE_MIGRATIONS=true`이면 versioned migration을 실행하며,
+운영 배포에서는 별도 migration 단계 후 이 옵션을 끌 수 있다. `create_all()`은 더 이상
+사용하지 않는다.
 
 각 migration은 빈 DB와 기존 데이터 DB 모두에서 upgrade를 검증한다. 운영 데이터가 있는
 컬럼은 nullable 추가 → backfill → constraint 강화 순서를 사용한다.

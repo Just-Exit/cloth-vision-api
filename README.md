@@ -140,6 +140,17 @@ Password: cloth_vision
 컨테이너 상태와 로그는 각각 `make db-status`, `make db-logs`로 확인합니다. 데이터는
 Docker named volume인 `postgres_data`에 유지됩니다.
 
+DB schema는 Alembic migration으로 관리합니다.
+
+```bash
+make db-upgrade
+make db-check
+```
+
+이전 `create_all()` 방식으로 만든 DB는 기존 네 테이블의 컬럼 계약이 정확히 일치할 때만
+`0001` revision으로 자동 stamp한 뒤 업그레이드합니다. 운영자가 직접 전환하는 절차는
+[`migrations/README.md`](migrations/README.md)를 참고합니다.
+
 ## 테스트
 
 ```bash
