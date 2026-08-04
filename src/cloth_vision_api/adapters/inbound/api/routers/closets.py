@@ -1,6 +1,9 @@
 from fastapi import APIRouter, status
 
-from cloth_vision_api.adapters.inbound.api.dependencies import CurrentUser, ServiceDependency
+from cloth_vision_api.adapters.inbound.api.dependencies import (
+    ClosetServiceDependency,
+    CurrentUser,
+)
 from cloth_vision_api.adapters.inbound.api.schemas import ClosetCreate, ClosetResponse
 
 router = APIRouter(tags=["closets"])
@@ -13,12 +16,19 @@ router = APIRouter(tags=["closets"])
 )
 def create_closet(
     payload: ClosetCreate,
-    use_case: ServiceDependency,
+    closet_service: ClosetServiceDependency,
     current_user: CurrentUser,
 ) -> ClosetResponse:
-    return ClosetResponse.model_validate(use_case.create_closet(current_user.id, payload.name))
+    return ClosetResponse.model_validate(
+        closet_service.create_closet(current_user.id, payload.name)
+    )
 
 
 @router.get("/closets", response_model=list[ClosetResponse])
-def list_closets(use_case: ServiceDependency, current_user: CurrentUser) -> list[ClosetResponse]:
-    return [ClosetResponse.model_validate(item) for item in use_case.list_closets(current_user.id)]
+def list_closets(
+    closet_service: ClosetServiceDependency,
+    current_user: CurrentUser,
+) -> list[ClosetResponse]:
+    return [
+        ClosetResponse.model_validate(item) for item in closet_service.list_closets(current_user.id)
+    ]
