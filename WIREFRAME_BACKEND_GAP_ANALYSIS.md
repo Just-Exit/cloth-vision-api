@@ -984,10 +984,10 @@ POST  /api/v1/auth/logout
 
 - 와이어프레임: `wireframe/*.png`
 - 현재 API 목록: `src/cloth_vision_api/adapters/inbound/api/routers/`
-- 현재 요청/응답 스키마: `src/cloth_vision_api/adapters/inbound/api/schemas.py`
+- 현재 요청/응답 스키마: `src/cloth_vision_api/adapters/inbound/api/schemas/`
 - 현재 ORM 모델: `src/cloth_vision_api/adapters/outbound/database/orm/`
-- 현재 DB repository: `src/cloth_vision_api/adapters/outbound/database/repository.py`
-- 현재 유스케이스: `src/cloth_vision_api/application/use_cases.py`
+- 현재 DB repository: `src/cloth_vision_api/adapters/outbound/database/repositories/`
+- 현재 유스케이스: `src/cloth_vision_api/application/identity/`, `application/wardrobe/`
 - 현재 애플리케이션 조립: `src/cloth_vision_api/main.py`
 - 현재 Core 분석/추천: `../cloth-vision-core/src/cloth_vision_core/`
 - 기존 미래 설계 참고: `guide/PROJECT.md`

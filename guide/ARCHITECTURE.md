@@ -66,6 +66,39 @@ adapters/outbound
 의존성은 adapter에서 application/domain 방향이다. domain은 FastAPI, SQLAlchemy와 provider
 SDK를 import하지 않는다.
 
+### 소스 모듈 구조
+
+```text
+src/cloth_vision_api/
+├── domain/                         # framework 독립 entity/value
+├── application/
+│   ├── identity/                   # AuthService
+│   └── wardrobe/                   # ClosetService
+├── ports/outbound/
+│   ├── identity_repository.py      # identity 영속 계약
+│   ├── wardrobe_repository.py      # wardrobe 영속 계약
+│   ├── image_storage.py
+│   ├── item_analyzer.py
+│   ├── password_manager.py
+│   └── token_manager.py
+├── adapters/inbound/api/
+│   ├── routers/                    # FastAPI endpoint
+│   └── schemas/                    # 기능별 요청·응답 schema
+├── adapters/outbound/
+│   ├── database/
+│   │   ├── orm/                    # SQLAlchemy table mapping
+│   │   ├── repositories/           # port별 SQLAlchemy 구현
+│   │   └── session.py              # engine/session factory
+│   ├── security/                   # password/token 구현
+│   └── storage/                    # image storage 구현
+└── main.py                         # composition root
+```
+
+`main.py`는 DB session factory를 한 번 만들고 이를 identity/wardrobe repository에 공유한다.
+Application service는 통합 repository가 아니라 필요한 최소 port만 주입받는다. 새 기능은
+기존 통합 파일을 키우지 않고 동일한 bounded context 패키지에 port/service/adapter를
+추가한다.
+
 ## 4. 화면별 Read/Write 경계
 
 | 화면 | Write | Read |
