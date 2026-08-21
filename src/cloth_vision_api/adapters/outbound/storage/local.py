@@ -32,9 +32,8 @@ class LocalImageStorage:
 
     def delete(self, key: str) -> None:
         path = self.path_for(key)
-        if path.exists():
-            path.unlink()
-        try:
-            path.parent.rmdir()
-        except OSError:
-            pass
+        item_directory = path.parent
+        if item_directory.parent != self.root:
+            raise ValueError("invalid item storage directory")
+        if item_directory.exists():
+            shutil.rmtree(item_directory)

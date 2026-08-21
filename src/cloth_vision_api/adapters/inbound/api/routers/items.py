@@ -3,6 +3,7 @@ from uuid import UUID
 
 from cloth_vision_core import Category
 from fastapi import APIRouter, File, Form, UploadFile, status
+from fastapi.responses import FileResponse
 
 from cloth_vision_api.adapters.inbound.api.dependencies import (
     ClosetServiceDependency,
@@ -25,7 +26,6 @@ def add_item(
     closet_service: ClosetServiceDependency,
     config: SettingsDependency,
     current_user: CurrentUser,
-    display_name: Annotated[str, Form(min_length=1, max_length=120)],
     image: Annotated[UploadFile, File()],
     category: Annotated[Category | None, Form()] = None,
 ) -> ItemResponse:
@@ -38,7 +38,6 @@ def add_item(
     item = closet_service.add_item(
         closet_id,
         current_user.id,
-        display_name,
         image.filename or "upload",
         image.file,
         category,
@@ -67,6 +66,25 @@ def get_item(
     return ItemResponse.model_validate(closet_service.get_item(item_id, current_user.id))
 
 
+@router.get(
+    "/items/{item_id}/image",
+    response_class=FileResponse,
+    responses={200: {"content": {"image/jpeg": {}, "image/png": {}, "image/webp": {}}}},
+)
+def get_item_image(
+    item_id: UUID,
+    closet_service: ClosetServiceDependency,
+    current_user: CurrentUser,
+) -> FileResponse:
+    path = closet_service.get_item_image_path(item_id, current_user.id)
+    return FileResponse(
+        path,
+        filename=path.name,
+        content_disposition_type="inline",
+        headers={"Cache-Control": "private, max-age=300"},
+    )
+
+
 @router.patch("/items/{item_id}", response_model=ItemResponse)
 def update_item(
     item_id: UUID,
@@ -82,6 +100,9 @@ def update_item(
         payload.subcategory,
         payload.style_tags,
         payload.season_tags,
+        payload.colors,
+        payload.materials,
+        payload.user_attributes,
     )
     return ItemResponse.model_validate(item)
 
