@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from io import BytesIO
 
+from cloth_vision_core import AnalysisPipeline, PillowImageProcessor
+from cloth_vision_core.providers import MockVisionProvider
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -22,6 +24,7 @@ def make_test_settings(tmp_path) -> Settings:
         database_url=f"sqlite:///{tmp_path / 'test.db'}",
         upload_dir=tmp_path / "uploads",
         jwt_secret_key="test-secret-key-with-at-least-32-characters",
+        openai_api_key="",
     )
 
 
@@ -40,6 +43,9 @@ def signup(client: TestClient, email: str = "user@example.com") -> dict[str, str
 
 def test_health_auth_and_item_workflow(tmp_path) -> None:
     app = create_app(make_test_settings(tmp_path))
+    app.state.closet_service.analyzer = AnalysisPipeline(
+        PillowImageProcessor(), MockVisionProvider()
+    )
     with TestClient(app) as client:
         health = client.get("/api/v1/health")
         assert health.json() == {"status": "ok", "environment": "test"}
@@ -66,7 +72,7 @@ def test_health_auth_and_item_workflow(tmp_path) -> None:
         assert item.status_code == 201
         assert item.json()["status"] == "ready"
         assert item.json()["category"] == "top"
-        assert item.json()["color_name"] == "blue"
+        assert item.json()["color_name"] is None
         assert item.json()["image_url"].endswith(f"/items/{item.json()['id']}/image")
 
         listed = client.get(f"/api/v1/closets/{closet_id}/items", headers=headers)
@@ -156,6 +162,29 @@ def test_rejects_invalid_image(tmp_path) -> None:
         )
         assert response.status_code == 422
         assert response.json()["code"] == "InvalidImageError"
+
+
+def test_marks_item_failed_without_vision_provider(tmp_path) -> None:
+    app = create_app(make_test_settings(tmp_path))
+    with TestClient(app) as client:
+        headers = signup(client, "no-provider@example.com")
+        closet_id = client.post(
+            "/api/v1/closets", json={"name": "main"}, headers=headers
+        ).json()["id"]
+
+        response = client.post(
+            f"/api/v1/closets/{closet_id}/items",
+            files={"image": ("shirt.png", image_bytes((30, 80, 180)), "image/png")},
+            headers=headers,
+        )
+
+        assert response.status_code == 201
+        assert response.json()["status"] == "failed"
+        assert response.json()["color_hex"] is None
+        assert response.json()["colors"] == []
+        assert response.json()["user_attributes"] == {
+            "analysis_warning": "vision_provider_unavailable"
+        }
 
 
 def test_login_and_rejects_missing_authentication(tmp_path) -> None:

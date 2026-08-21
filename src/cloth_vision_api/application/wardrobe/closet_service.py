@@ -98,7 +98,11 @@ class ClosetService:
             item.season_tags = result.season_tags
             item.confidence = result.confidence
             item.user_attributes = result.attributes
-            item.status = ItemStatus.READY
+            item.status = (
+                ItemStatus.FAILED
+                if result.attributes.get("analysis_warning")
+                else ItemStatus.READY
+            )
         except CoreInvalidImageError as exc:
             item.status = ItemStatus.FAILED
             self.wardrobe_repository.save_item(item)
