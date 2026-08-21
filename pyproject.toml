@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "alembic>=1.14,<2",
-    "cloth-vision-core",
+    "cloth-vision-core[openai,segmentation]",
     "email-validator>=2.2,<3",
     "fastapi>=0.115,<1",
     "pydantic-settings>=2.6,<3",
