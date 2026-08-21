@@ -98,8 +98,10 @@ SEGMENTATION_MODEL=u2netp
 openssl rand -hex 32
 ```
 
-`.env`와 OpenAI API key는 커밋하거나 공유하지 않습니다. `OPENAI_API_KEY`가 비어 있으면
-OpenAI 분석 없이 Pillow 대표색 분석으로 fallback합니다.
+`.env`와 OpenAI API key는 커밋하거나 공유하지 않습니다. `OPENAI_API_KEY`가 비어 있거나
+OpenAI 호출이 실패하면 아이템은 `failed` 상태가 되며 `analysis_warning`을 반환합니다.
+segmentation mask가 없는 경우 Pillow가 배경을 의류 색상으로 추측하지 않고 색상도 빈
+값으로 유지합니다.
 
 segmentation을 함께 시험하려면 다음 값을 사용합니다.
 
