@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from io import BytesIO
 
 from fastapi.testclient import TestClient
@@ -58,7 +59,7 @@ def test_health_auth_and_item_workflow(tmp_path) -> None:
 
         item = client.post(
             f"/api/v1/closets/{closet_id}/items",
-            data={"display_name": "파란 셔츠", "category": "top"},
+            data={"category": "top"},
             files={"image": ("shirt.png", image_bytes((30, 80, 180)), "image/png")},
             headers=headers,
         )
@@ -66,19 +67,77 @@ def test_health_auth_and_item_workflow(tmp_path) -> None:
         assert item.json()["status"] == "ready"
         assert item.json()["category"] == "top"
         assert item.json()["color_name"] == "blue"
+        assert item.json()["image_url"].endswith(f"/items/{item.json()['id']}/image")
 
         listed = client.get(f"/api/v1/closets/{closet_id}/items", headers=headers)
         assert listed.status_code == 200
         assert len(listed.json()) == 1
 
         item_id = item.json()["id"]
+        image = client.get(item.json()["image_url"], headers=headers)
+        assert image.status_code == 200
+        assert image.headers["content-type"] == "image/png"
+        assert image.content == image_bytes((30, 80, 180))
+
         updated = client.patch(
             f"/api/v1/items/{item_id}",
-            json={"style_tags": ["classic"], "season_tags": ["spring"]},
+            json={
+                "style_tags": ["classic"],
+                "season_tags": ["spring"],
+                "materials": [{"name": "cotton", "source": "user_confirmed"}],
+                "colors": [
+                    {"display_hex": "#1E50B4", "color_name": "blue", "ratio": 1.0}
+                ],
+                "user_attributes": {"pattern": "solid", "fit": "regular"},
+            },
             headers=headers,
         )
         assert updated.status_code == 200
         assert updated.json()["style_tags"] == ["classic"]
+        assert updated.json()["materials"][0]["name"] == "cotton"
+        assert updated.json()["colors"][0]["display_hex"] == "#1E50B4"
+
+        same_category = client.post(
+            f"/api/v1/closets/{closet_id}/items",
+            data={"category": "top"},
+            files={"image": ("sweater.png", image_bytes((200, 200, 200)), "image/png")},
+            headers=headers,
+        )
+        assert same_category.status_code == 201
+
+        different_category = client.post(
+            f"/api/v1/closets/{closet_id}/items",
+            data={"category": "bottom"},
+            files={"image": ("pants.png", image_bytes((20, 20, 20)), "image/png")},
+            headers=headers,
+        )
+        assert different_category.status_code == 201
+
+        recommendations = client.get(
+            f"/api/v1/items/{item_id}/recommendations", headers=headers
+        )
+        assert recommendations.status_code == 200
+        assert [result["target_item_id"] for result in recommendations.json()] == [
+            different_category.json()["id"]
+        ]
+
+
+def test_access_log_and_request_id(tmp_path, caplog) -> None:
+    settings = make_test_settings(tmp_path)
+    settings.run_database_migrations = False
+    app = create_app(settings)
+    with caplog.at_level(logging.INFO, logger="cloth_vision_api.access"):
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/v1/health", headers={"X-Request-ID": "req_test_request"}
+            )
+
+    assert response.headers["X-Request-ID"] == "req_test_request"
+    assert any(
+        "GET /api/v1/health status=200" in record.message
+        and "request_id=req_test_request" in record.message
+        for record in caplog.records
+    )
 
 
 def test_rejects_invalid_image(tmp_path) -> None:
@@ -92,7 +151,6 @@ def test_rejects_invalid_image(tmp_path) -> None:
         ).json()["id"]
         response = client.post(
             f"/api/v1/closets/{closet_id}/items",
-            data={"display_name": "invalid"},
             files={"image": ("bad.txt", b"not an image", "text/plain")},
             headers=headers,
         )
