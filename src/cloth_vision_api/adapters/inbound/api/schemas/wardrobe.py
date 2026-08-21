@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from cloth_vision_core import Category
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from cloth_vision_api.domain.models import ItemStatus
 
@@ -29,12 +29,19 @@ class ItemResponse(BaseModel):
     status: ItemStatus
     color_hex: str | None
     color_name: str | None
+    colors: list[dict]
+    materials: list[dict]
     style_tags: list[str]
     season_tags: list[str]
     confidence: float | None
     user_attributes: dict[str, str]
     created_at: datetime
     updated_at: datetime
+
+    @computed_field
+    @property
+    def image_url(self) -> str:
+        return f"/api/v1/items/{self.id}/image"
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -45,3 +52,6 @@ class ItemUpdate(BaseModel):
     subcategory: str | None = Field(default=None, max_length=60)
     style_tags: list[str] | None = None
     season_tags: list[str] | None = None
+    colors: list[dict] | None = None
+    materials: list[dict] | None = None
+    user_attributes: dict[str, str] | None = None

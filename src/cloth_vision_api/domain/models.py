@@ -60,6 +60,8 @@ class FashionItem:
     image_key: str | None = None
     color_hex: str | None = None
     color_name: str | None = None
+    colors: list[dict] = field(default_factory=list)
+    materials: list[dict] = field(default_factory=list)
     style_tags: list[str] = field(default_factory=list)
     season_tags: list[str] = field(default_factory=list)
     confidence: float | None = None
