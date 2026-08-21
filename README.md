@@ -1,161 +1,366 @@
 # Cloth Vision API
 
-Explainable AI 기반 개인 맞춤 패션 분석 플랫폼
+사용자가 촬영한 의류 이미지를 분석해 디지털 옷장을 만들고, 색상·계절·스타일 기반의
+기본 아이템 추천을 제공하는 FastAPI 백엔드입니다.
 
-## Goal
+## 저장소 역할
 
-사용자의 의류 사진을 분석하고 옷장 데이터를 구축하여
-개인 맞춤 코디 추천 제공 및 착장 분석
+이 프로젝트는 두 저장소로 구성됩니다.
 
-## Tech Stack
+- `cloth-vision`: HTTP API, 인증·인가, PostgreSQL, 이미지 저장, Core 조립
+- `cloth-vision-core`: 이미지 전처리, 선택적 segmentation, OpenAI 멀티모달 분석,
+  deterministic 아이템 매칭
 
-Frontend:
+로컬 개발에서는 API가 `../cloth-vision-core`를 editable dependency로 참조하므로 두
+저장소를 반드시 같은 상위 디렉터리에 둡니다.
 
-- React Native
-- TypeScript
+## 현재 구현 범위
 
-Backend:
+- 이메일·비밀번호 회원가입/로그인과 JWT access token
+- 사용자별 옷장 생성 및 최신 등록순 아이템 목록
+- JPEG, PNG, WebP 의류 이미지 업로드와 로컬 파일 저장
+- OpenAI Responses API 기반 의류 카테고리·색상 팔레트·소재·스타일·계절 분석
+- 선택적 rembg segmentation과 mask/투명 이미지/분석용 crop 생성
+- 분석 결과 조회와 사용자 보정
+- 인증된 의류 이미지 조회
+- 선택한 아이템과 다른 카테고리 아이템의 색상·계절·스타일 기반 추천
+- 요청 method/path/status/duration/request ID access log
 
-- Python
-- FastAPI
+현재 업로드와 AI 분석은 한 HTTP 요청 안에서 동기 실행됩니다. 로컬 이미지는
+`var/uploads/{item_id}/` 아래에 저장되며 운영용 object storage와 비동기 worker는 아직
+연결되지 않았습니다.
 
-AI:
+## 사전 요구사항
 
-- OpenCV
-- Vision Model
-- Embedding Model
-- LLM
+- Git과 GitHub SSH 인증
+- Python 3.11 이상
+- [uv](https://docs.astral.sh/uv/)
+- Docker와 Docker Compose
+- 멀티모달 분석을 사용할 경우 결제가 활성화된 OpenAI API key
 
-Database:
+두 GitHub 저장소가 비공개라면 `Just-Exit` organization에 대한 접근 권한도 필요합니다.
 
-- PostgreSQL
-- pgvector
-
-## Backend MVP
-
-FastAPI 기반 Cloth Vision 서비스 API입니다. 이미지 분석·점수화·매칭은 별도
-[`cloth-vision-core`](https://github.com/onedayonecommit/cloth-vision-core) 패키지에
-위임하고, 이 저장소는 HTTP API, 인증, DB, 이미지 저장을 담당합니다.
-
-구현 범위:
-
-- 이메일·비밀번호 회원가입, JWT 로그인 및 현재 사용자 조회
-- 사용자별 closet 생성/조회와 소유권 검사
-- 옷·신발·액세서리를 포함한 fashion item 이미지 업로드와 형식·해상도 검증
-- 전체 이미지의 대표 색상 1개를 산출하는 경량 분석
-- 분석 결과 조회 및 사용자 수정
-- 색상·계절·스타일 기반 기본 패션 아이템 조합 추천
-- PostgreSQL/pgvector 이미지 기반 로컬 개발 환경
-
-현재(2026-08-04) 분석 파이프라인에는 production Vision provider가 연결되어 있지 않습니다. 업로드 시
-카테고리 힌트를 전달하지 않으면 카테고리는 `unknown`, 하위 카테고리는 `unclassified`가
-되며 스타일·계절 태그도 자동 생성되지 않습니다. 실제 의류 분할·분류·소재 분석과
-Embedding 저장은 구현 예정입니다.
-
-인증 정보는 `users`와 `auth_identities`로 분리되어 있습니다. 현재 로컬 비밀번호 로그인을
-지원하며, 추후 Google·Apple OAuth는 provider와 외부 subject 기반 identity를 추가해
-확장할 수 있습니다. 비밀번호는 Argon2id 해시로만 저장됩니다.
-
-상세 설계 및 요구사항 문서는 [`guide/`](guide/) 디렉터리에 있습니다.
-
-## 문서
-
-- [`ROADMAP.md`](ROADMAP.md): 화면설계서 기준 우선순위, 난이도, 구현 순서와 진척도
-- [`WIREFRAME_BACKEND_GAP_ANALYSIS.md`](WIREFRAME_BACKEND_GAP_ANALYSIS.md): 화면별 API·DB
-  충족 여부, 목표 ERD와 상세 작업
-- [`guide/`](guide/): 아키텍처, API와 프로젝트 설계 자료
-
-## 저장소 구성
-
-로컬에서 API와 Core를 함께 개발할 때 두 저장소를 같은 상위 디렉터리에 둡니다.
+## 1. Clone
 
 ```bash
-git clone git@github.com:onedayonecommit/cloth-vision-api.git cloth-vision
-git clone git@github.com:onedayonecommit/cloth-vision-core.git
+mkdir cloth
+cd cloth
+
+git clone git@github.com:Just-Exit/cloth-vision-api.git cloth-vision
+git clone git@github.com:Just-Exit/cloth-vision-core.git cloth-vision-core
 ```
+
+최종 디렉터리 구조는 다음과 같아야 합니다.
 
 ```text
-workspace/
-└── cloth/
-    ├── cloth-vision/
-    └── cloth-vision-core/
+cloth/
+├── cloth-vision/
+└── cloth-vision-core/
 ```
 
-API의 `pyproject.toml`은 개발 중 `../cloth-vision-core`를 editable dependency로
-사용합니다. Core `v0.1.0`을 공개한 뒤에는 Git tag 또는 PyPI 버전 의존성으로 전환할 수
-있습니다.
-
-## 실행
-
-Python 3.11 이상과 `uv` 사용을 권장합니다.
+## 2. 환경변수 설정
 
 ```bash
-uv sync --extra dev
-uv run uvicorn cloth_vision_api.main:app --reload
-```
-
-프로젝트 디렉터리를 이동했다면 기존 `.venv/bin/*` 실행 파일에 이전 절대경로가 남을 수
-있습니다. 이 경우 가상환경을 새로 생성합니다.
-
-```bash
-mv .venv .venv.before-move
-uv sync --extra dev
-```
-
-또는 Make를 사용할 수 있습니다.
-
-```bash
-make install-dev
-make run
-```
-
-기본 포트는 `8000`이며 실행 명령 뒤에 포트를 지정할 수 있습니다.
-
-```bash
-make run 9000
-```
-
-- API 문서: `http://127.0.0.1:8000/docs`
-- 상태 확인: `GET http://127.0.0.1:8000/api/v1/health`
-
-PostgreSQL은 Docker Compose로 실행합니다.
-
-```bash
+cd cloth-vision
 cp .env.example .env
-make install-dev
+```
+
+`.env`에서 최소한 아래 값을 확인하거나 설정합니다.
+
+```dotenv
+APP_ENV=local
+DATABASE_URL=postgresql+psycopg://cloth_vision:cloth_vision@localhost:5432/cloth_vision
+RUN_DATABASE_MIGRATIONS=true
+
+POSTGRES_DB=cloth_vision
+POSTGRES_USER=cloth_vision
+POSTGRES_PASSWORD=cloth_vision
+POSTGRES_PORT=5432
+
+UPLOAD_DIR=./var/uploads
+MAX_UPLOAD_BYTES=10485760
+ALLOWED_IMAGE_TYPES=image/jpeg,image/png,image/webp
+
+JWT_SECRET_KEY=replace-with-at-least-32-random-characters
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+OPENAI_API_KEY=your-own-openai-api-key
+OPENAI_VISION_MODEL=gpt-5.4-mini
+
+ENABLE_SEGMENTATION=false
+SEGMENTATION_MODEL=u2netp
+```
+
+로컬 JWT secret은 다음 명령으로 만들 수 있습니다.
+
+```bash
+openssl rand -hex 32
+```
+
+`.env`와 OpenAI API key는 커밋하거나 공유하지 않습니다. `OPENAI_API_KEY`가 비어 있으면
+OpenAI 분석 없이 Pillow 대표색 분석으로 fallback합니다.
+
+segmentation을 함께 시험하려면 다음 값을 사용합니다.
+
+```dotenv
+ENABLE_SEGMENTATION=true
+SEGMENTATION_MODEL=u2netp
+```
+
+rembg 모델은 처음 분석할 때 다운로드될 수 있어 첫 요청이 오래 걸릴 수 있습니다.
+
+## 3. 의존성 설치
+
+```bash
+uv sync --all-extras
+```
+
+API 저장소의 가상환경에 API와 로컬 Core가 함께 editable installation 됩니다.
+
+## 4. PostgreSQL 실행
+
+```bash
+docker compose up -d postgres
+docker compose ps postgres
+```
+
+로그가 필요하면 다음 명령을 사용합니다.
+
+```bash
+docker compose logs -f postgres
+```
+
+DB schema는 서버 시작 시 Alembic head까지 자동 upgrade됩니다. 수동으로 실행하려면 다음
+명령을 사용합니다.
+
+```bash
+uv run alembic upgrade head
+uv run alembic check
+```
+
+## 5. API 서버 실행
+
+로컬 PC에서만 테스트할 때:
+
+```bash
+uv run uvicorn cloth_vision_api.main:app --reload --port 8000
+```
+
+실제 모바일 기기에서 같은 네트워크를 통해 접근할 때:
+
+```bash
+uv run uvicorn cloth_vision_api.main:app \
+  --reload \
+  --host 0.0.0.0 \
+  --port 8000
+```
+
+Makefile을 사용해도 됩니다.
+
+```bash
 make db-up
 make run
 ```
 
-기본 접속 정보는 로컬 개발 전용이며 `.env`에서 변경할 수 있습니다.
+확인 주소:
+
+- Swagger UI: `http://127.0.0.1:8000/docs`
+- Health: `http://127.0.0.1:8000/api/v1/health`
+
+요청이 들어오면 터미널에 method, path, status, 처리 시간과 request ID가 기록됩니다.
 
 ```text
-Host: localhost
-Port: 5432
-Database: cloth_vision
-User: cloth_vision
-Password: cloth_vision
+INFO [cloth_vision_api.access] POST /api/v1/auth/login status=200 duration_ms=184.2 request_id=req_...
 ```
 
-컨테이너 상태와 로그는 각각 `make db-status`, `make db-logs`로 확인합니다. 데이터는
-Docker named volume인 `postgres_data`에 유지됩니다.
+## 6. API 빠른 테스트
 
-DB schema는 Alembic migration으로 관리합니다.
+아래 예시에서 `jq`를 사용하면 응답의 ID와 token을 편리하게 저장할 수 있습니다.
+
+### 회원가입과 token 발급
 
 ```bash
-make db-upgrade
-make db-check
+ACCESS_TOKEN=$(
+  curl -s -X POST 'http://127.0.0.1:8000/api/v1/auth/signup' \
+    -H 'Content-Type: application/json' \
+    -d '{
+      "email": "tester@example.com",
+      "password": "demo-password",
+      "nickname": "tester"
+    }' |
+  jq -r '.access_token'
+)
 ```
 
-이전 `create_all()` 방식으로 만든 DB는 기존 네 테이블의 컬럼 계약이 정확히 일치할 때만
-`0001` revision으로 자동 stamp한 뒤 업그레이드합니다. 운영자가 직접 전환하는 절차는
-[`migrations/README.md`](migrations/README.md)를 참고합니다.
+이미 가입한 계정은 로그인 endpoint를 사용합니다.
 
-## 테스트
+```bash
+ACCESS_TOKEN=$(
+  curl -s -X POST 'http://127.0.0.1:8000/api/v1/auth/login' \
+    -H 'Content-Type: application/json' \
+    -d '{
+      "email": "tester@example.com",
+      "password": "demo-password"
+    }' |
+  jq -r '.access_token'
+)
+```
+
+### 옷장 생성
+
+```bash
+CLOSET_ID=$(
+  curl -s -X POST 'http://127.0.0.1:8000/api/v1/closets' \
+    -H "Authorization: Bearer $ACCESS_TOKEN" \
+    -H 'Content-Type: application/json' \
+    -d '{"name":"테스트 옷장"}' |
+  jq -r '.id'
+)
+```
+
+기존 옷장 목록은 다음 API로 확인합니다.
+
+```bash
+curl 'http://127.0.0.1:8000/api/v1/closets' \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+### 의류 이미지 업로드와 분석
+
+업로드는 `multipart/form-data`이며 `display_name`은 받지 않습니다. 성공 시 AI가 한국어
+의류명을 생성합니다.
+
+```bash
+curl -X POST \
+  "http://127.0.0.1:8000/api/v1/closets/$CLOSET_ID/items" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F 'image=@/absolute/path/to/garment.jpg'
+```
+
+카테고리를 알고 있다면 힌트를 선택적으로 전달할 수 있습니다.
+
+```bash
+curl -X POST \
+  "http://127.0.0.1:8000/api/v1/closets/$CLOSET_ID/items" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F 'category=outer' \
+  -F 'image=@/absolute/path/to/jacket.jpg'
+```
+
+허용 category는 `top`, `bottom`, `outer`, `shoes`, `accessory`, `unknown`입니다. AI 분류를
+확인하려면 category를 생략합니다.
+
+다음과 같은 응답은 provider 분석이 실패하고 로컬 분석으로 fallback했다는 뜻입니다.
+
+```json
+{
+  "category": "unknown",
+  "confidence": 0,
+  "user_attributes": {
+    "analysis_warning": "vision_provider_failed"
+  }
+}
+```
+
+OpenAI에서 `429 insufficient_quota`가 발생하면 API Billing과 project usage limit을
+확인합니다.
+
+### 최신순 옷장 아이템 목록
+
+```bash
+curl \
+  "http://127.0.0.1:8000/api/v1/closets/$CLOSET_ID/items" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+응답은 최신 등록순 배열이며 각 아이템에 인증 이미지 경로가 포함됩니다.
+
+```json
+[
+  {
+    "id": "item-uuid",
+    "display_name": "그래픽 반팔 티셔츠",
+    "image_url": "/api/v1/items/item-uuid/image",
+    "created_at": "2026-08-21T01:55:32Z"
+  }
+]
+```
+
+### 아이템 이미지 조회
+
+```bash
+ITEM_ID='item-uuid'
+
+curl \
+  "http://127.0.0.1:8000/api/v1/items/$ITEM_ID/image" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  --output item-image.jpg
+```
+
+모바일 이미지 컴포넌트도 `image_url` 요청에 같은 Bearer token을 전달해야 합니다.
+
+### 아이템 상세와 추천
+
+```bash
+curl \
+  "http://127.0.0.1:8000/api/v1/items/$ITEM_ID" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+```bash
+curl \
+  "http://127.0.0.1:8000/api/v1/items/$ITEM_ID/recommendations?limit=5" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+추천 API는 선택한 아이템과 다른 category이며 `ready` 상태인 같은 옷장 아이템만 색상,
+계절, 스타일 기준으로 비교합니다. 후보가 없으면 빈 배열을 반환합니다.
+
+## 7. 테스트와 정적 검사
+
+API 테스트:
 
 ```bash
 uv run pytest
-uv run ruff check .
+uv run ruff check src tests
 ```
 
-전체 검증은 `make check`로 실행할 수 있습니다.
+Core 테스트:
+
+```bash
+cd ../cloth-vision-core
+PYTHONPATH=src ../cloth-vision/.venv/bin/python -m pytest -q
+../cloth-vision/.venv/bin/ruff check src tests
+```
+
+API 전체 검증은 다음 명령으로 실행할 수 있습니다.
+
+```bash
+cd ../cloth-vision
+make check
+```
+
+## 8. 종료와 데이터 초기화
+
+PostgreSQL 컨테이너 종료:
+
+```bash
+docker compose down
+```
+
+DB volume까지 삭제해 완전히 초기화:
+
+```bash
+docker compose down -v
+```
+
+`down -v`는 모든 로컬 DB 데이터를 삭제합니다. 업로드 이미지는 별도
+`var/uploads/`에 있으므로 필요하면 명시적으로 정리해야 합니다.
+
+## 문서
+
+- [`API_LIST.md`](API_LIST.md): 화면 요구사항 기준 API 진행 상태
+- [`ROADMAP.md`](ROADMAP.md): 우선순위와 구현 순서
+- [`WIREFRAME_BACKEND_GAP_ANALYSIS.md`](WIREFRAME_BACKEND_GAP_ANALYSIS.md): 화면별 API·DB gap
+- [`guide/`](guide/): 아키텍처, 도메인, DB, API, AI pipeline, 보안과 테스트 설계
