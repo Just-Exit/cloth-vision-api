@@ -30,8 +30,10 @@ class LocalImageStorage:
             raise ValueError("invalid storage key")
         return path
 
-    def outfit_path(self, user_id: UUID, outfit_id: UUID) -> Path:
-        path = (self.root / "outfits" / str(user_id) / f"{outfit_id}.webp").resolve()
+    def outfit_path(self, user_id: UUID, closet_id: UUID, outfit_id: UUID) -> Path:
+        path = (
+            self.root / "outfits" / str(user_id) / str(closet_id) / f"{outfit_id}.webp"
+        ).resolve()
         if self.root not in path.parents:
             raise ValueError("invalid outfit storage path")
         return path

@@ -17,14 +17,18 @@ from cloth_vision_api.adapters.inbound.api.schemas.styling import (
 router = APIRouter(tags=["outfit-recommendations"])
 
 
-@router.post("/outfit-recommendations", response_model=OutfitRecommendationsResponse)
+@router.post(
+    "/closets/{closet_id}/outfit-recommendations",
+    response_model=OutfitRecommendationsResponse,
+)
 def recommend_outfits(
+    closet_id: UUID,
     payload: OutfitRecommendationRequest,
     closet_service: ClosetServiceDependency,
     current_user: CurrentUser,
 ) -> OutfitRecommendationsResponse:
     result, items_by_id = closet_service.outfit_recommendations(
-        payload.closet_id, current_user.id, payload.limit
+        closet_id, current_user.id, payload.limit
     )
     outfits = []
     for generated in result.outfits:
@@ -44,7 +48,9 @@ def recommend_outfits(
         outfits.append(
             OutfitCandidateResponse(
                 id=generated.id,
-                image_url=f"/api/v1/outfit-recommendations/{generated.id}/image",
+                image_url=(
+                    f"/api/v1/closets/{closet_id}/outfit-recommendations/{generated.id}/image"
+                ),
                 overall_score=candidate.overall_score,
                 scores={
                     "color": candidate.color_score,
@@ -72,11 +78,15 @@ def recommend_outfits(
     )
 
 
-@router.get("/outfit-recommendations/{outfit_id}/image", response_class=FileResponse)
+@router.get(
+    "/closets/{closet_id}/outfit-recommendations/{outfit_id}/image",
+    response_class=FileResponse,
+)
 def get_outfit_image(
+    closet_id: UUID,
     outfit_id: UUID,
     closet_service: ClosetServiceDependency,
     current_user: CurrentUser,
 ) -> FileResponse:
-    path = closet_service.get_outfit_image_path(outfit_id, current_user.id)
+    path = closet_service.get_outfit_image_path(closet_id, outfit_id, current_user.id)
     return FileResponse(path, media_type="image/webp", filename=f"{outfit_id}.webp")

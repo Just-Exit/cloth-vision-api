@@ -13,7 +13,6 @@ class RecommendationResponse(BaseModel):
 
 
 class OutfitRecommendationRequest(BaseModel):
-    closet_id: UUID
     limit: int = Field(default=3, ge=1, le=10)
 
 
