@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     openai_api_key: SecretStr | None = None
     openai_vision_model: str = "gpt-5.4-mini"
+    openai_outfit_model: str = "gpt-5.4-mini"
     enable_segmentation: bool = False
     segmentation_model: str = "u2netp"
 

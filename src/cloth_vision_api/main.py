@@ -9,10 +9,11 @@ from uuid import uuid4
 from cloth_vision_core import (
     AnalysisPipeline,
     MatchingEngine,
+    OutfitImageComposer,
     PillowImageProcessor,
     RembgSegmentationProvider,
 )
-from cloth_vision_core.providers import OpenAIVisionProvider
+from cloth_vision_core.providers import OpenAIOutfitExplanationProvider, OpenAIVisionProvider
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -53,6 +54,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if config.openai_api_key
         else None
     )
+    outfit_explanation_provider = (
+        OpenAIOutfitExplanationProvider(
+            model=config.openai_outfit_model,
+            api_key=config.openai_api_key.get_secret_value(),
+        )
+        if config.openai_api_key
+        else None
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -82,6 +91,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             else None,
         ),
         MatchingEngine(),
+        OutfitImageComposer(),
+        outfit_explanation_provider,
     )
     app.state.auth_service = AuthService(
         identity_repository,
