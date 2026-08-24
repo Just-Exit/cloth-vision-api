@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
 from uuid import NAMESPACE_URL, UUID, uuid5
+from zoneinfo import ZoneInfo
 
 from cloth_vision_core import (
     Category,
@@ -27,6 +29,7 @@ from cloth_vision_api.ports.outbound import (
     ImageStorage,
     ItemAnalyzer,
     WardrobeRepository,
+    WeatherCache,
 )
 
 
@@ -55,6 +58,7 @@ class ClosetService:
         matching_engine: MatchingEngine,
         outfit_composer: OutfitImageComposer | None = None,
         outfit_explanation_provider: OutfitExplanationProvider | None = None,
+        weather_cache: WeatherCache | None = None,
     ) -> None:
         self.identity_repository = identity_repository
         self.wardrobe_repository = wardrobe_repository
@@ -64,6 +68,7 @@ class ClosetService:
         self.outfit_engine = OutfitRecommendationEngine(matching_engine)
         self.outfit_composer = outfit_composer or OutfitImageComposer()
         self.outfit_explanation_provider = outfit_explanation_provider
+        self.weather_cache = weather_cache
 
     def create_closet(self, user_id: UUID, name: str) -> Closet:
         if not self.identity_repository.get_user(user_id):
@@ -173,6 +178,200 @@ class ClosetService:
         self._owned_closet(closet_id, user_id)
         return self.wardrobe_repository.list_items(closet_id)
 
+    def closet_analytics(self, closet_id: UUID, user_id: UUID) -> dict:
+        self._owned_closet(closet_id, user_id)
+        items = [
+            item
+            for item in self.wardrobe_repository.list_items(closet_id)
+            if item.status == ItemStatus.READY
+        ]
+        total = len(items)
+
+        color_counts: Counter[tuple[str, str]] = Counter()
+        for item in items:
+            primary = item.colors[0] if item.colors else None
+            display_hex = (primary or {}).get("display_hex") or item.color_hex
+            color_name = (primary or {}).get("color_name") or item.color_name
+            if display_hex and color_name:
+                color_counts[(str(color_name), str(display_hex).upper())] += 1
+
+        season_counts = Counter(
+            season for item in items for season in set(item.season_tags) if season
+        )
+        category_counts = Counter(
+            item.category for item in items if item.category is not Category.UNKNOWN
+        )
+        required = (
+            Category.TOP,
+            Category.BOTTOM,
+            Category.OUTER,
+            Category.SHOES,
+            Category.ACCESSORY,
+        )
+        labels = {
+            Category.TOP: "상의가 없어 기본 코디를 구성하기 어렵습니다.",
+            Category.BOTTOM: "하의가 없어 기본 코디를 구성하기 어렵습니다.",
+            Category.OUTER: "아우터를 추가하면 레이어드 코디의 폭이 넓어집니다.",
+            Category.SHOES: "신발을 추가하면 완성된 코디를 추천할 수 있습니다.",
+            Category.ACCESSORY: "액세서리를 추가하면 포인트 코디가 다양해집니다.",
+        }
+
+        return {
+            "closet_id": closet_id,
+            "total_items": total,
+            "color_distribution": [
+                {
+                    "color_name": name,
+                    "display_hex": display_hex,
+                    "item_count": count,
+                    "ratio": self._ratio(count, sum(color_counts.values())),
+                }
+                for (name, display_hex), count in color_counts.most_common()
+            ],
+            "season_balance": [
+                {
+                    "name": name,
+                    "item_count": count,
+                    "ratio": self._ratio(count, sum(season_counts.values())),
+                }
+                for name, count in season_counts.most_common()
+            ],
+            "category_distribution": [
+                {
+                    "category": category,
+                    "item_count": count,
+                    "ratio": self._ratio(count, sum(category_counts.values())),
+                }
+                for category, count in category_counts.most_common()
+            ],
+            "essential_recommendations": [
+                {"category": category, "reason": labels[category], "priority": priority}
+                for priority, category in enumerate(
+                    (category for category in required if category_counts[category] == 0),
+                    start=1,
+                )
+            ][:3],
+        }
+
+    def dashboard(self, closet_id: UUID, user_id: UUID) -> dict:
+        user = self.identity_repository.get_user(user_id)
+        if not user:
+            raise NotFoundError("사용자를 찾을 수 없습니다.")
+        self._owned_closet(closet_id, user_id)
+        items = [
+            item
+            for item in self.wardrobe_repository.list_items(closet_id)
+            if item.status == ItemStatus.READY
+        ]
+        target_categories = (
+            Category.TOP,
+            Category.BOTTOM,
+            Category.OUTER,
+            Category.SHOES,
+            Category.ACCESSORY,
+        )
+        present = {item.category for item in items}
+        covered = [category for category in target_categories if category in present]
+        missing = [category for category in target_categories if category not in present]
+
+        weather = self.weather_cache.get() if self.weather_cache else None
+        preferred_seasons = self._weather_seasons(weather.temperature) if weather else None
+        recommendations, items_by_id = self.outfit_recommendations(
+            closet_id, user_id, 1, preferred_seasons=preferred_seasons
+        )
+        generated = recommendations.outfits[0] if recommendations.outfits else None
+        today_outfit = None
+        if generated:
+            today_outfit = {
+                "id": generated.id,
+                "image_url": (
+                    f"/api/v1/closets/{closet_id}/outfit-recommendations/{generated.id}/image"
+                ),
+                "reason": (
+                    f"서울 {weather.temperature:.0f}°C 날씨와 계절 태그를 고려한 코디입니다."
+                    if weather
+                    else generated.reason
+                ),
+                "items": [
+                    {
+                        "id": item_id,
+                        "category": items_by_id[item_id].category,
+                        "display_name": items_by_id[item_id].display_name,
+                        "thumbnail_url": f"/api/v1/items/{item_id}/images/thumbnail",
+                    }
+                    for item_id in generated.candidate.item_ids
+                ],
+            }
+
+        hour = datetime.now(ZoneInfo("Asia/Seoul")).hour
+        greeting = (
+            "좋은 아침입니다"
+            if hour < 12
+            else "좋은 오후입니다"
+            if hour < 18
+            else "좋은 저녁입니다"
+        )
+        stylist_tip = (
+            generated.stylist_tip
+            if generated
+            else "상의와 하의를 등록하면 오늘의 코디를 추천해드릴게요."
+        )
+        return {
+            "nickname": user.nickname,
+            "greeting": greeting,
+            "today_outfit": today_outfit,
+            "closet_summary": {
+                "completeness_score": round(len(covered) / len(target_categories) * 100),
+                "total_items": len(items),
+                "covered_categories": covered,
+                "missing_categories": missing,
+            },
+            "stylist_tip": stylist_tip,
+            "weather": self._weather_payload(weather),
+            "recent_items": [
+                {
+                    "id": item.id,
+                    "display_name": item.display_name,
+                    "category": item.category,
+                    "thumbnail_url": f"/api/v1/items/{item.id}/images/thumbnail",
+                    "created_at": item.created_at.isoformat(),
+                }
+                for item in items[:5]
+            ],
+        }
+
+    @staticmethod
+    def _weather_seasons(temperature: float) -> set[str]:
+        if temperature < 10:
+            return {"winter"}
+        if temperature < 20:
+            return {"spring", "fall"}
+        if temperature < 28:
+            return {"spring", "summer", "fall"}
+        return {"summer"}
+
+    @staticmethod
+    def _weather_payload(weather) -> dict | None:
+        if weather is None:
+            return None
+        return {
+            "location": weather.location,
+            "temperature": weather.temperature,
+            "feels_like": weather.feels_like,
+            "condition": weather.condition,
+            "description": weather.description,
+            "precipitation": weather.precipitation,
+            "humidity": weather.humidity,
+            "wind_speed": weather.wind_speed,
+            "observed_at": weather.observed_at.isoformat(),
+            "fetched_at": weather.fetched_at.isoformat(),
+            "is_stale": weather.is_stale,
+        }
+
+    @staticmethod
+    def _ratio(count: int, total: int) -> float:
+        return round(count / total, 4) if total else 0.0
+
     def update_item(
         self,
         item_id: UUID,
@@ -233,7 +432,12 @@ class ClosetService:
         return sorted(scored, key=lambda item: item.overall_score, reverse=True)[:limit]
 
     def outfit_recommendations(
-        self, closet_id: UUID, user_id: UUID, limit: int
+        self,
+        closet_id: UUID,
+        user_id: UUID,
+        limit: int,
+        *,
+        preferred_seasons: set[str] | None = None,
     ) -> tuple[GeneratedOutfitRecommendations, dict[UUID, FashionItem]]:
         self._owned_closet(closet_id, user_id)
         items = [
@@ -242,9 +446,22 @@ class ClosetService:
             if item.status == ItemStatus.READY
         ]
         items_by_id = {item.id: item for item in items}
-        result = self.outfit_engine.recommend([self._profile(item) for item in items], limit=limit)
+        result = self.outfit_engine.recommend(
+            [self._profile(item) for item in items],
+            limit=max(limit * 3, limit) if preferred_seasons else limit,
+        )
+        candidates = result.outfits
+        if preferred_seasons:
+            candidates = sorted(
+                candidates,
+                key=lambda candidate: (
+                    self._candidate_weather_score(candidate, items_by_id, preferred_seasons),
+                    candidate.overall_score,
+                ),
+                reverse=True,
+            )[:limit]
         generated = []
-        for candidate in result.outfits:
+        for candidate in candidates:
             outfit_id = uuid5(
                 NAMESPACE_URL,
                 f"cloth-vision:{user_id}:"
@@ -254,7 +471,9 @@ class ClosetService:
             sources = [
                 (item.category, self._best_composite_source(item)) for item in candidate_items
             ]
-            self.outfit_composer.compose(sources, self.storage.outfit_path(user_id, outfit_id))
+            self.outfit_composer.compose(
+                sources, self.storage.outfit_path(user_id, closet_id, outfit_id)
+            )
             reason, tip = self._outfit_copy(candidate, candidate_items)
             generated.append(GeneratedOutfit(outfit_id, candidate, reason, tip))
         return (
@@ -264,8 +483,26 @@ class ClosetService:
             items_by_id,
         )
 
-    def get_outfit_image_path(self, outfit_id: UUID, user_id: UUID) -> Path:
-        path = self.storage.outfit_path(user_id, outfit_id)
+    @staticmethod
+    def _candidate_weather_score(
+        candidate: OutfitCandidate,
+        items_by_id: dict[UUID, FashionItem],
+        preferred_seasons: set[str],
+    ) -> float:
+        tags = [
+            set(items_by_id[item_id].season_tags)
+            for item_id in candidate.item_ids
+            if items_by_id[item_id].season_tags
+        ]
+        return (
+            sum(bool(item_tags & preferred_seasons) for item_tags in tags) / len(tags)
+            if tags
+            else 0.0
+        )
+
+    def get_outfit_image_path(self, closet_id: UUID, outfit_id: UUID, user_id: UUID) -> Path:
+        self._owned_closet(closet_id, user_id)
+        path = self.storage.outfit_path(user_id, closet_id, outfit_id)
         if not path.is_file():
             raise NotFoundError("추천 코디 이미지를 찾을 수 없습니다.")
         return path
