@@ -59,7 +59,9 @@
 
 ## P0 — 코디 추천
 
-- [ ] `POST /api/v1/outfit-recommendations`
+- [x] `POST /api/v1/outfit-recommendations` — 옷장 전체 기반 즉석 코디 추천, 합성 이미지,
+  짧은 LLM 추천 이유 구현. 날씨·일정 context와 코디 DB 저장은 미구현
+- [x] `GET /api/v1/outfit-recommendations/{outfit_id}/image` — 사용자별 추천 합성 이미지
 - [ ] `GET /api/v1/outfits`
 - [ ] `GET /api/v1/outfits/{outfit_id}`
 - [ ] `PATCH /api/v1/outfits/{outfit_id}`

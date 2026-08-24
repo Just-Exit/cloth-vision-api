@@ -87,6 +87,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 OPENAI_API_KEY=your-own-openai-api-key
 OPENAI_VISION_MODEL=gpt-5.4-mini
+OPENAI_OUTFIT_MODEL=gpt-5.4-mini
 
 ENABLE_SEGMENTATION=false
 SEGMENTATION_MODEL=u2netp
@@ -230,8 +231,10 @@ curl 'http://127.0.0.1:8000/api/v1/closets' \
 
 ### 의류 이미지 업로드와 분석
 
-업로드는 `multipart/form-data`이며 `display_name`은 받지 않습니다. 성공 시 AI가 한국어
-의류명을 생성합니다.
+업로드는 `multipart/form-data`이며 `display_name`은 받지 않습니다. 자동 분석은 상품명이나
+소재를 추정하지 않고 카테고리·색상·계절·스타일과 시각 속성을 반환합니다. 표시명은
+`상의`, `하의`, `아우터`, `신발`, `액세서리` 같은 일반명을 사용하며 필요하면 사용자가
+상세 수정 API로 직접 변경할 수 있습니다.
 
 ```bash
 curl -X POST \
@@ -282,8 +285,14 @@ curl \
 [
   {
     "id": "item-uuid",
-    "display_name": "그래픽 반팔 티셔츠",
+    "display_name": "상의",
     "image_url": "/api/v1/items/item-uuid/image",
+    "images": {
+      "original_url": "/api/v1/items/item-uuid/images/original",
+      "transparent_url": "/api/v1/items/item-uuid/images/transparent",
+      "normalized_url": "/api/v1/items/item-uuid/images/normalized",
+      "thumbnail_url": "/api/v1/items/item-uuid/images/thumbnail"
+    },
     "created_at": "2026-08-21T01:55:32Z"
   }
 ]
@@ -300,7 +309,10 @@ curl \
   --output item-image.jpg
 ```
 
-모바일 이미지 컴포넌트도 `image_url` 요청에 같은 Bearer token을 전달해야 합니다.
+옷장 목록에서는 `images.thumbnail_url`, 분석 상세 화면에서는 `images.normalized_url`을
+사용합니다. segmentation이 비활성화됐거나 기존 아이템에 파생 이미지가 없으면 서버가
+원본으로 fallback합니다. 모바일 이미지 컴포넌트도 이미지 요청에 같은 Bearer token을
+전달해야 합니다.
 
 ### 아이템 상세와 추천
 
@@ -318,6 +330,30 @@ curl \
 
 추천 API는 선택한 아이템과 다른 category이며 `ready` 상태인 같은 옷장 아이템만 색상,
 계절, 스타일 기준으로 비교합니다. 후보가 없으면 빈 배열을 반환합니다.
+
+### 옷장 전체 코디 추천
+
+```bash
+curl -X POST \
+  'http://127.0.0.1:8000/api/v1/outfit-recommendations' \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "{\"closet_id\":\"$CLOSET_ID\",\"limit\":3}"
+```
+
+이 API는 특정 아이템을 기준으로 하지 않고 옷장의 모든 `ready` 아이템으로 코디를
+구성합니다. 상의와 하의는 필수이며, 등록돼 있다면 아우터·신발·액세서리를 단계적으로
+추가합니다. 상의×하의 조합을 계산한 뒤 각 단계에서 상위 20개 후보만 유지하고 최종적으로
+다양한 상의가 포함된 최대 3개의 코디를 반환합니다. 조합마다 LLM을 호출하지 않고 최종
+후보에만 LLM이 짧은 `reason`과 `stylist_tip`을 작성합니다. LLM 호출이 실패하거나 키가
+없으면 같은 필드를 규칙 기반 문구로 반환합니다.
+
+각 결과의 `image_url`은 추천 의류를 한 장에 배치한 WebP 이미지입니다. segmentation
+산출물이 있으면 배경이 제거된 이미지를 우선 사용하며, 없으면 원본을 사용합니다. 이 URL도
+Bearer 토큰이 필요합니다. 예: `GET /api/v1/outfit-recommendations/{outfit_id}/image`.
+
+필수 카테고리가 부족하면 `outfits`는 빈 배열이며 `missing_categories`에 필요한 카테고리가
+포함됩니다.
 
 ## 7. 테스트와 정적 검사
 
