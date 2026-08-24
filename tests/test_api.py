@@ -74,6 +74,9 @@ def test_health_auth_and_item_workflow(tmp_path) -> None:
         assert item.json()["category"] == "top"
         assert item.json()["color_name"] is None
         assert item.json()["image_url"].endswith(f"/items/{item.json()['id']}/image")
+        assert item.json()["images"]["thumbnail_url"].endswith(
+            f"/items/{item.json()['id']}/images/thumbnail"
+        )
 
         listed = client.get(f"/api/v1/closets/{closet_id}/items", headers=headers)
         assert listed.status_code == 200
@@ -84,6 +87,11 @@ def test_health_auth_and_item_workflow(tmp_path) -> None:
         assert image.status_code == 200
         assert image.headers["content-type"] == "image/png"
         assert image.content == image_bytes((30, 80, 180))
+        thumbnail = client.get(item.json()["images"]["thumbnail_url"], headers=headers)
+        assert thumbnail.status_code == 200
+        # Segmentation is disabled in this test, so derived image routes use the original.
+        assert thumbnail.headers["content-type"] == "image/png"
+        assert thumbnail.content == image.content
 
         updated = client.patch(
             f"/api/v1/items/{item_id}",
@@ -91,9 +99,7 @@ def test_health_auth_and_item_workflow(tmp_path) -> None:
                 "style_tags": ["classic"],
                 "season_tags": ["spring"],
                 "materials": [{"name": "cotton", "source": "user_confirmed"}],
-                "colors": [
-                    {"display_hex": "#1E50B4", "color_name": "blue", "ratio": 1.0}
-                ],
+                "colors": [{"display_hex": "#1E50B4", "color_name": "blue", "ratio": 1.0}],
                 "user_attributes": {"pattern": "solid", "fit": "regular"},
             },
             headers=headers,
@@ -119,13 +125,34 @@ def test_health_auth_and_item_workflow(tmp_path) -> None:
         )
         assert different_category.status_code == 201
 
-        recommendations = client.get(
-            f"/api/v1/items/{item_id}/recommendations", headers=headers
-        )
+        recommendations = client.get(f"/api/v1/items/{item_id}/recommendations", headers=headers)
         assert recommendations.status_code == 200
         assert [result["target_item_id"] for result in recommendations.json()] == [
             different_category.json()["id"]
         ]
+
+        outfits = client.post(
+            "/api/v1/outfit-recommendations",
+            json={"closet_id": closet_id, "limit": 3},
+            headers=headers,
+        )
+        assert outfits.status_code == 200
+        assert len(outfits.json()["outfits"]) == 2
+        assert outfits.json()["missing_categories"] == []
+        assert all(
+            {item["category"] for item in outfit["items"]} == {"top", "bottom"}
+            for outfit in outfits.json()["outfits"]
+        )
+        assert all(
+            item["thumbnail_url"].endswith("/images/thumbnail")
+            for outfit in outfits.json()["outfits"]
+            for item in outfit["items"]
+        )
+        assert all(outfit["reason"] for outfit in outfits.json()["outfits"])
+        assert all(len(outfit["reason"]) <= 80 for outfit in outfits.json()["outfits"])
+        outfit_image = client.get(outfits.json()["outfits"][0]["image_url"], headers=headers)
+        assert outfit_image.status_code == 200
+        assert outfit_image.headers["content-type"] == "image/webp"
 
 
 def test_access_log_and_request_id(tmp_path, caplog) -> None:
@@ -134,9 +161,7 @@ def test_access_log_and_request_id(tmp_path, caplog) -> None:
     app = create_app(settings)
     with caplog.at_level(logging.INFO, logger="cloth_vision_api.access"):
         with TestClient(app) as client:
-            response = client.get(
-                "/api/v1/health", headers={"X-Request-ID": "req_test_request"}
-            )
+            response = client.get("/api/v1/health", headers={"X-Request-ID": "req_test_request"})
 
     assert response.headers["X-Request-ID"] == "req_test_request"
     assert any(
@@ -168,9 +193,9 @@ def test_marks_item_failed_without_vision_provider(tmp_path) -> None:
     app = create_app(make_test_settings(tmp_path))
     with TestClient(app) as client:
         headers = signup(client, "no-provider@example.com")
-        closet_id = client.post(
-            "/api/v1/closets", json={"name": "main"}, headers=headers
-        ).json()["id"]
+        closet_id = client.post("/api/v1/closets", json={"name": "main"}, headers=headers).json()[
+            "id"
+        ]
 
         response = client.post(
             f"/api/v1/closets/{closet_id}/items",
