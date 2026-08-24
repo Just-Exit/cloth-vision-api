@@ -18,6 +18,13 @@ class ItemStatus(StrEnum):
     FAILED = "failed"
 
 
+class ItemImageType(StrEnum):
+    ORIGINAL = "original"
+    TRANSPARENT = "transparent"
+    NORMALIZED = "normalized"
+    THUMBNAIL = "thumbnail"
+
+
 class AuthProvider(StrEnum):
     LOCAL = "local"
     GOOGLE = "google"

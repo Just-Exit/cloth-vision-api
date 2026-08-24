@@ -20,6 +20,13 @@ class ClosetResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ItemImageUrls(BaseModel):
+    original_url: str
+    transparent_url: str
+    normalized_url: str
+    thumbnail_url: str
+
+
 class ItemResponse(BaseModel):
     id: UUID
     closet_id: UUID
@@ -42,6 +49,17 @@ class ItemResponse(BaseModel):
     @property
     def image_url(self) -> str:
         return f"/api/v1/items/{self.id}/image"
+
+    @computed_field
+    @property
+    def images(self) -> ItemImageUrls:
+        base = f"/api/v1/items/{self.id}/images"
+        return ItemImageUrls(
+            original_url=f"{base}/original",
+            transparent_url=f"{base}/transparent",
+            normalized_url=f"{base}/normalized",
+            thumbnail_url=f"{base}/thumbnail",
+        )
 
     model_config = ConfigDict(from_attributes=True)
 

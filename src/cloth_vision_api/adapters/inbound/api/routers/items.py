@@ -12,6 +12,7 @@ from cloth_vision_api.adapters.inbound.api.dependencies import (
 )
 from cloth_vision_api.adapters.inbound.api.schemas.wardrobe import ItemResponse, ItemUpdate
 from cloth_vision_api.application.errors import InvalidImageError
+from cloth_vision_api.domain.models import ItemImageType
 
 router = APIRouter(tags=["items"])
 
@@ -77,6 +78,26 @@ def get_item_image(
     current_user: CurrentUser,
 ) -> FileResponse:
     path = closet_service.get_item_image_path(item_id, current_user.id)
+    return FileResponse(
+        path,
+        filename=path.name,
+        content_disposition_type="inline",
+        headers={"Cache-Control": "private, max-age=300"},
+    )
+
+
+@router.get(
+    "/items/{item_id}/images/{image_type}",
+    response_class=FileResponse,
+    responses={200: {"content": {"image/jpeg": {}, "image/png": {}, "image/webp": {}}}},
+)
+def get_item_image_by_type(
+    item_id: UUID,
+    image_type: ItemImageType,
+    closet_service: ClosetServiceDependency,
+    current_user: CurrentUser,
+) -> FileResponse:
+    path = closet_service.get_item_image_path(item_id, current_user.id, image_type)
     return FileResponse(
         path,
         filename=path.name,
