@@ -4,6 +4,7 @@ from cloth_vision_api.ports.outbound.item_analyzer import ItemAnalyzer
 from cloth_vision_api.ports.outbound.password_manager import PasswordManager
 from cloth_vision_api.ports.outbound.token_manager import TokenManager
 from cloth_vision_api.ports.outbound.wardrobe_repository import WardrobeRepository
+from cloth_vision_api.ports.outbound.weather_cache import WeatherCache
 
 __all__ = [
     "IdentityRepository",
@@ -12,4 +13,5 @@ __all__ = [
     "PasswordManager",
     "TokenManager",
     "WardrobeRepository",
+    "WeatherCache",
 ]

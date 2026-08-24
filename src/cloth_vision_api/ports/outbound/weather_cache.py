@@ -1,0 +1,6 @@
+from typing import Any, Protocol
+
+
+class WeatherCache(Protocol):
+    def get(self) -> Any | None: ...
+    def save(self, snapshot: Any) -> None: ...

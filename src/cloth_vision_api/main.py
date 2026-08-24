@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
@@ -21,11 +22,13 @@ from cloth_vision_api.adapters.inbound.api.router import router
 from cloth_vision_api.adapters.outbound.database import (
     SqlAlchemyIdentityRepository,
     SqlAlchemyWardrobeRepository,
+    SqlAlchemyWeatherCache,
     create_session_factory,
     upgrade_database,
 )
 from cloth_vision_api.adapters.outbound.security import Argon2PasswordManager, JwtTokenManager
 from cloth_vision_api.adapters.outbound.storage import LocalImageStorage
+from cloth_vision_api.adapters.outbound.weather import CachedWeatherService, OpenWeatherMapProvider
 from cloth_vision_api.application.errors import (
     ApplicationError,
     ConflictError,
@@ -46,6 +49,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     session_factory = create_session_factory(config.database_url)
     identity_repository = SqlAlchemyIdentityRepository(session_factory)
     wardrobe_repository = SqlAlchemyWardrobeRepository(session_factory)
+    weather_cache = SqlAlchemyWeatherCache(session_factory)
     vision_provider = (
         OpenAIVisionProvider(
             model=config.openai_vision_model,
@@ -62,6 +66,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if config.openai_api_key
         else None
     )
+    weather_service = (
+        CachedWeatherService(
+            OpenWeatherMapProvider(
+                api_key=config.openweather_api_key.get_secret_value(),
+                latitude=config.weather_latitude,
+                longitude=config.weather_longitude,
+            ),
+            weather_cache,
+            refresh_minutes=config.weather_refresh_minutes,
+            max_age_minutes=config.weather_cache_max_age_minutes,
+        )
+        if config.openweather_api_key
+        else None
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -70,7 +88,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Alembic's logging configuration can disable loggers created before migration startup.
         access_logger.disabled = False
         access_logger.setLevel(logging.INFO)
-        yield
+        weather_task = asyncio.create_task(weather_service.run()) if weather_service else None
+        try:
+            yield
+        finally:
+            if weather_task:
+                weather_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await weather_task
 
     app = FastAPI(
         title=config.app_name,
@@ -93,6 +118,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         MatchingEngine(),
         OutfitImageComposer(),
         outfit_explanation_provider,
+        weather_service,
     )
     app.state.auth_service = AuthService(
         identity_repository,

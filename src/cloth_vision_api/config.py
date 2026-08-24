@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     openai_outfit_model: str = "gpt-5.4-mini"
     enable_segmentation: bool = False
     segmentation_model: str = "u2netp"
+    openweather_api_key: SecretStr | None = None
+    weather_latitude: float = 37.5665
+    weather_longitude: float = 126.9780
+    weather_refresh_minutes: int = 30
+    weather_cache_max_age_minutes: int = 90
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

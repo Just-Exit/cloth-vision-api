@@ -22,6 +22,7 @@ from cloth_vision_api.adapters.outbound.database.orm.wardrobe import (
     ItemAnalysisRow,
     ItemImageRow,
 )
+from cloth_vision_api.adapters.outbound.database.orm.weather import WeatherCacheRow
 
 __all__ = [
     "AnalysisJobRow",
@@ -42,4 +43,5 @@ __all__ = [
     "UserProfileRow",
     "UserRow",
     "WearEventRow",
+    "WeatherCacheRow",
 ]

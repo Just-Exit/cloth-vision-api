@@ -22,10 +22,12 @@ from cloth_vision_api.adapters.outbound.database.orm import (
     UserProfileRow,
     UserRow,
     WearEventRow,
+    WeatherCacheRow,
 )
 from cloth_vision_api.adapters.outbound.database.repositories import (
     SqlAlchemyIdentityRepository,
     SqlAlchemyWardrobeRepository,
+    SqlAlchemyWeatherCache,
 )
 from cloth_vision_api.adapters.outbound.database.session import (
     create_database_engine,
@@ -48,11 +50,13 @@ __all__ = [
     "RefreshTokenRow",
     "SqlAlchemyIdentityRepository",
     "SqlAlchemyWardrobeRepository",
+    "SqlAlchemyWeatherCache",
     "SubscriptionRow",
     "UserPreferenceRow",
     "UserProfileRow",
     "UserRow",
     "WearEventRow",
+    "WeatherCacheRow",
     "create_database_engine",
     "create_session_factory",
     "downgrade_database",
