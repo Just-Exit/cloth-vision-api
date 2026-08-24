@@ -91,6 +91,12 @@ OPENAI_OUTFIT_MODEL=gpt-5.4-mini
 
 ENABLE_SEGMENTATION=false
 SEGMENTATION_MODEL=u2netp
+
+OPENWEATHER_API_KEY=your-openweathermap-api-key
+WEATHER_LATITUDE=37.5665
+WEATHER_LONGITUDE=126.9780
+WEATHER_REFRESH_MINUTES=30
+WEATHER_CACHE_MAX_AGE_MINUTES=90
 ```
 
 로컬 JWT secret은 다음 명령으로 만들 수 있습니다.
@@ -335,10 +341,10 @@ curl \
 
 ```bash
 curl -X POST \
-  'http://127.0.0.1:8000/api/v1/outfit-recommendations' \
+  "http://127.0.0.1:8000/api/v1/closets/$CLOSET_ID/outfit-recommendations" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d "{\"closet_id\":\"$CLOSET_ID\",\"limit\":3}"
+  -d '{"limit":3}'
 ```
 
 이 API는 특정 아이템을 기준으로 하지 않고 옷장의 모든 `ready` 아이템으로 코디를
@@ -350,10 +356,44 @@ curl -X POST \
 
 각 결과의 `image_url`은 추천 의류를 한 장에 배치한 WebP 이미지입니다. segmentation
 산출물이 있으면 배경이 제거된 이미지를 우선 사용하며, 없으면 원본을 사용합니다. 이 URL도
-Bearer 토큰이 필요합니다. 예: `GET /api/v1/outfit-recommendations/{outfit_id}/image`.
+Bearer 토큰이 필요합니다. 예:
+`GET /api/v1/closets/{closet_id}/outfit-recommendations/{outfit_id}/image`.
 
 필수 카테고리가 부족하면 `outfits`는 빈 배열이며 `missing_categories`에 필요한 카테고리가
 포함됩니다.
+
+### 옷장 분석
+
+```bash
+curl \
+  "http://127.0.0.1:8000/api/v1/closets/$CLOSET_ID/analytics" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+선택한 옷장의 `ready` 의류를 기준으로 `color_distribution`, `season_balance`,
+`category_distribution`, `essential_recommendations`를 반환합니다. 각 분포의 `ratio`는
+`0~1` 범위입니다. 착용 기록 없이는 알 수 없는 많이 입은 컬러, 안 입는 옷, 착용당 비용은
+응답에 포함하지 않습니다. 필수 아이템은 현재 없는 카테고리를 우선순위대로 최대 3개
+반환하며, 모든 핵심 카테고리가 있으면 빈 배열입니다.
+
+### 홈 대시보드
+
+```bash
+curl \
+  "http://127.0.0.1:8000/api/v1/closets/$CLOSET_ID/dashboard" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+앱 홈 화면에서 필요한 `nickname`, 시간대별 `greeting`, `today_outfit`,
+`closet_summary`, `stylist_tip`, 최근 등록순 `recent_items` 최대 5개를 한 번에 반환합니다.
+`closet_summary.completeness_score`는 상의·하의·아우터·신발·액세서리 5개 핵심
+카테고리 중 보유한 카테고리 비율입니다. 상의와 하의가 모두 있어야 `today_outfit`이
+생성되며, 부족하면 `null`을 반환합니다. `OPENWEATHER_API_KEY`가 설정되면 서버가 서울
+현재 날씨를 시작 시점부터 30분 간격으로 PostgreSQL의 `weather_cache` 테이블에 갱신하고
+`weather`에 반환합니다. 날씨 호출 실패 시 DB의 마지막 캐시를 유지하며 90분 이상 지난
+값은 `is_stale=true`입니다. 여러 API worker와 서버 재시작 후에도 같은 캐시를 사용합니다.
+온도에 맞는 계절 태그를 오늘의 코디 정렬에 반영합니다. 키가 없으면 `weather=null`이며,
+착용 기록이 필요한 이번 달 착용 수는 포함하지 않습니다.
 
 ## 7. 테스트와 정적 검사
 
