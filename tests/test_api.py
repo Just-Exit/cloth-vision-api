@@ -25,6 +25,7 @@ def make_test_settings(tmp_path) -> Settings:
         upload_dir=tmp_path / "uploads",
         jwt_secret_key="test-secret-key-with-at-least-32-characters",
         openai_api_key="",
+        openweather_api_key="",
     )
 
 
@@ -132,8 +133,8 @@ def test_health_auth_and_item_workflow(tmp_path) -> None:
         ]
 
         outfits = client.post(
-            "/api/v1/outfit-recommendations",
-            json={"closet_id": closet_id, "limit": 3},
+            f"/api/v1/closets/{closet_id}/outfit-recommendations",
+            json={"limit": 3},
             headers=headers,
         )
         assert outfits.status_code == 200
@@ -153,6 +154,52 @@ def test_health_auth_and_item_workflow(tmp_path) -> None:
         outfit_image = client.get(outfits.json()["outfits"][0]["image_url"], headers=headers)
         assert outfit_image.status_code == 200
         assert outfit_image.headers["content-type"] == "image/webp"
+        another_closet = client.post("/api/v1/closets", json={"name": "다른 옷장"}, headers=headers)
+        wrong_closet_url = outfits.json()["outfits"][0]["image_url"].replace(
+            closet_id, another_closet.json()["id"]
+        )
+        assert client.get(wrong_closet_url, headers=headers).status_code == 404
+        assert (
+            client.post(
+                "/api/v1/outfit-recommendations",
+                json={"closet_id": closet_id, "limit": 3},
+                headers=headers,
+            ).status_code
+            == 404
+        )
+
+        analytics = client.get(
+            f"/api/v1/closets/{closet_id}/analytics",
+            headers=headers,
+        )
+        assert analytics.status_code == 200
+        report = analytics.json()
+        assert report["total_items"] == 3
+        assert {entry["category"] for entry in report["category_distribution"]} == {
+            "top",
+            "bottom",
+        }
+        assert report["color_distribution"][0]["display_hex"] == "#1E50B4"
+        assert all(
+            entry["category"] not in {"top", "bottom"}
+            for entry in report["essential_recommendations"]
+        )
+        assert "unworn_items" not in report
+        assert "cost_per_wear" not in report
+
+        dashboard = client.get(
+            f"/api/v1/closets/{closet_id}/dashboard",
+            headers=headers,
+        )
+        assert dashboard.status_code == 200
+        home = dashboard.json()
+        assert home["nickname"] == "tester"
+        assert home["today_outfit"]["image_url"].endswith("/image")
+        assert home["closet_summary"]["completeness_score"] == 40
+        assert home["closet_summary"]["total_items"] == 3
+        assert len(home["recent_items"]) == 3
+        assert home["weather"] is None
+        assert "monthly_wear_count" not in home
 
 
 def test_access_log_and_request_id(tmp_path, caplog) -> None:

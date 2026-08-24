@@ -48,6 +48,7 @@ EXPECTED_TABLES = {
     "user_profiles",
     "users",
     "wear_events",
+    "weather_cache",
 }
 
 
