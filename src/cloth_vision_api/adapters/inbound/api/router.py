@@ -5,6 +5,7 @@ from cloth_vision_api.adapters.inbound.api.routers import (
     closets,
     health,
     items,
+    outfits,
     recommendations,
 )
 
@@ -14,3 +15,4 @@ router.include_router(auth.router)
 router.include_router(closets.router)
 router.include_router(items.router)
 router.include_router(recommendations.router)
+router.include_router(outfits.router)
